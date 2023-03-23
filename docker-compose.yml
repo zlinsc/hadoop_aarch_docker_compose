@@ -1,0 +1,54 @@
+services:
+  master-node:
+    hostname: master-node
+    image: jeff/hadoop
+    extra_hosts:
+      - 'master-node:172.20.0.2'
+      - 'slave-node:172.20.0.3'
+      - 'mysql-node:172.20.0.4'
+    networks:
+      my-hadoop:
+        ipv4_address: 172.20.0.2
+    expose:
+      - '20'
+    ports:
+      - 9870:9870
+    tty: true
+    stdin_open: true
+  
+  slave-node:
+    hostname: slave-node
+    image: jeff/hadoop
+    extra_hosts:
+      - 'master-node:172.20.0.2'
+      - 'slave-node:172.20.0.3'
+      - 'mysql-node:172.20.0.4'
+    networks:
+      my-hadoop:
+        ipv4_address: 172.20.0.3
+    expose:
+      - '20'
+    ports:
+      - 8088:8088
+    tty: true
+    stdin_open: true
+
+  mysql-node:
+    hostname: mysql-node
+    image: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: 'root'
+    extra_hosts:
+      - 'master-node:172.20.0.2'
+      - 'slave-node:172.20.0.3'
+      - 'mysql-node:172.20.0.4'
+    networks:
+      my-hadoop:
+        ipv4_address: 172.20.0.4
+    expose:
+      - '20'
+      - '3306'
+
+networks:
+  my-hadoop:
+    external: true
