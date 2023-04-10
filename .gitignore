@@ -1,3 +1,7 @@
 *.tgz
 *.tar.gz
 *.jar
+flink_work/target
+flink_work/.idea
+flink_work/flink_work.iml
+.DS_Store

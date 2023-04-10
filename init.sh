@@ -12,12 +12,18 @@ EOF
 }
 
 if [ "$(hostname)" = "master-node" ]; then
+    #flink
+    echo "taskmanager.host: $(hostname)" >> /home/flink/conf/flink-conf.yaml
+    
     #dfs
     authority "master-node"
     authority "slave-node"
     hdfs namenode -format
     /home/hadoop/sbin/start-dfs.sh
 elif [ "$(hostname)" = "slave-node" ]; then
+    #flink
+    echo "taskmanager.host: $(hostname)" >> /home/flink/conf/flink-conf.yaml
+
     #yarn
     authority 'master-node'
     authority 'slave-node'
@@ -35,4 +41,8 @@ elif [ "$(hostname)" = "slave-node" ]; then
     # nohup hive --service hiveserver2 2&> /home/hive/log/hs2.log &
     # beeline -u jdbc:hive2://localhost:10000 -n root
     # mysql -u root -p 
+
+    #flink
+    nohup start-cluster.sh 2&> /home/flink/log/start-cluster.log &
+    sleep 1
 fi

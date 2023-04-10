@@ -49,13 +49,14 @@ RUN mv hadoop/etc/hadoop/core-site.xml hadoop/etc/hadoop/core-site.xml.bak && \
     mv hadoop/etc/hadoop/hdfs-site.xml hadoop/etc/hadoop/hdfs-site.xml.bak && \
     mv hadoop/etc/hadoop/mapred-site.xml hadoop/etc/hadoop/mapred-site.xml.bak && \
     mv hadoop/etc/hadoop/yarn-site.xml hadoop/etc/hadoop/yarn-site.xml.bak && \
-    mv hadoop/etc/hadoop/workers hadoop/etc/hadoop/workers.bak && \
     mv flink/bin/taskmanager.sh flink/bin/taskmanager.sh.bak && \
     mv flink/conf/flink-conf.yaml flink/conf/flink-conf.yaml.bak
 
 RUN mv hadoop/tmp/hive-site.xml hive/conf/ && \
     mv hadoop/tmp/taskmanager.sh flink/bin/ && \
     mv hadoop/tmp/flink-conf.yaml flink/conf/ && \
+    mv hadoop/tmp/masters flink/conf/ && \
+    cp hadoop/tmp/workers flink/conf/ && \
     mv hadoop/tmp/* hadoop/etc/hadoop/
 
 RUN echo '\n\
