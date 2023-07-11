@@ -2,10 +2,13 @@ services:
   master-node:
     hostname: master-node
     image: jeff/hadoop
+    environment:
+      - PGPASSWORD=123456
     extra_hosts:
       - 'master-node:172.20.0.2'
       - 'slave-node:172.20.0.3'
       - 'mysql-node:172.20.0.4'
+      - 'db-node:172.20.0.5'
     networks:
       my-hadoop:
         ipv4_address: 172.20.0.2
@@ -13,16 +16,20 @@ services:
       - '20'
     ports:
       - 9870:9870
+      - 9864:9864
     tty: true
     stdin_open: true
   
   slave-node:
     hostname: slave-node
     image: jeff/hadoop
+    environment:
+      - PGPASSWORD=123456
     extra_hosts:
       - 'master-node:172.20.0.2'
       - 'slave-node:172.20.0.3'
       - 'mysql-node:172.20.0.4'
+      - 'db-node:172.20.0.5'
     networks:
       my-hadoop:
         ipv4_address: 172.20.0.3
@@ -31,6 +38,8 @@ services:
     ports:
       - 8088:8088
       - 8081:8081
+      - 9000:9000
+      - 8083:8083
     tty: true
     stdin_open: true
 
@@ -43,12 +52,33 @@ services:
       - 'master-node:172.20.0.2'
       - 'slave-node:172.20.0.3'
       - 'mysql-node:172.20.0.4'
+      - 'db-node:172.20.0.5'
     networks:
       my-hadoop:
         ipv4_address: 172.20.0.4
     expose:
       - '20'
       - '3306'
+
+  db-node:
+    hostname: db-node
+    # image: arm64v8/postgres:12.15-bookworm
+    image: jeff/hadoop
+    environment:
+      - PGPASSWORD=123456
+    extra_hosts:
+      - 'master-node:172.20.0.2'
+      - 'slave-node:172.20.0.3'
+      - 'mysql-node:172.20.0.4'
+      - 'db-node:172.20.0.5'
+    networks:
+      my-hadoop:
+        ipv4_address: 172.20.0.5
+    expose:
+      - '20'
+      - '5432'
+    tty: true
+    stdin_open: true
 
 networks:
   my-hadoop:

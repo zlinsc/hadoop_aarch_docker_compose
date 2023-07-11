@@ -1,0 +1,65 @@
+FROM ubuntu:18.04
+LABEL org.opencontainers.image.authors="jeff"
+
+WORKDIR /home
+
+EXPOSE 22
+RUN apt update && apt install -y openssh-server wget expect telnet curl ca-certificates gnupg vim
+RUN curl https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor | tee /etc/apt/trusted.gpg.d/apt.postgresql.org.gpg >/dev/null && echo "deb http://apt.postgresql.org/pub/repos/apt bionic-pgdg main" > /etc/apt/sources.list.d/pgdg.list && apt update && apt install -y postgresql-12
+
+# authority
+RUN echo "root:root" | chpasswd && \
+    echo "root   ALL=(ALL)       ALL" >> /etc/sudoers && \
+    ssh-keygen -t rsa -N '' -f /root/.ssh/id_rsa -q && \
+    sed -i 's/PermitRootLogin without-password/PermitRootLogin yes/g' /etc/ssh/sshd_config && \
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/g' /etc/ssh/sshd_config
+
+# tar install
+ADD jdk-8u361-linux-aarch64.tar.gz .
+ADD mysql-8.0.31-linux-glibc2.17-aarch64.tar.gz .
+ADD flink-1.17.0-bin-scala_2.12.tgz .
+# ADD flink-1.16.1-bin-scala_2.12.tgz .
+RUN mv jdk* jdk && \
+    mv mysql* mysql && \
+    mv flink* flink
+
+ENV JAVA_HOME /home/jdk
+ENV CLASSPATH=$JAVA_HOME/lib:$CLASSPATH
+ENV PATH ${JAVA_HOME}/bin:$PATH
+
+ENV FLINK_HOME /home/flink
+ENV PATH ${FLINK_HOME}/bin:$PATH
+
+ENV MYSQL_HOME /home/mysql
+ENV PATH ${MYSQL_HOME}/bin:$PATH
+
+RUN mv flink/bin/taskmanager.sh flink/bin/taskmanager.sh.bak && \
+    mv flink/conf/flink-conf.yaml flink/conf/flink-conf.yaml.bak
+
+COPY conf/flink/taskmanager.sh flink/bin/
+COPY conf/flink/flink-conf.yaml flink/conf/
+COPY conf/flink/masters flink/conf/
+COPY conf/flink/workers flink/conf/
+
+COPY mysql_init.sql .
+COPY psql_init.sql .
+COPY init.sh .
+COPY conf/psql/postgresql.conf .
+
+COPY mysql-connector-j-8.0.31.jar hive/lib
+COPY mysql-connector-j-8.0.31.jar flink/lib
+COPY flink-sql-connector-mysql-cdc-2.4.0.jar flink/lib
+COPY flink-sql-connector-postgres-cdc-2.4.0.jar flink/lib
+COPY flink-connector-debezium-2.4.0.jar flink/lib
+COPY jackson-databind-2.10.5.1.jar flink/lib
+COPY jackson-core-2.10.5.jar flink/lib
+COPY jackson-annotations-2.10.5.jar flink/lib
+COPY connect-api-2.7.1.jar flink/lib
+COPY debezium-core-1.6.4.Final.jar flink/lib
+COPY debezium-connector-mysql-1.6.4.Final.jar flink/lib
+COPY kafka-clients-2.7.1.jar flink/lib
+COPY antlr4-runtime-4.8.jar flink/lib
+COPY connect-runtime-3.2.0.jar flink/lib
+
+# init cmd
+CMD ["/bin/bash", "-c", "service ssh start; /bin/bash"]

@@ -1,6 +1,6 @@
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 
-object TestDemo {
+object EmulatedDemo {
   case class Person(name: String, age: Int)
 
   def main(args: Array[String]): Unit = {
