@@ -8,6 +8,6 @@ object EmulatedDemo {
     val flintstones = env.fromElements(Person("apple", 35), Person("banana", 20), Person("cat", 12))
     val adults = flintstones.filter(_.age >= 18)
     adults.print()
-    env.execute()
+    env.execute(getClass.getSimpleName.stripSuffix("$"))
   }
 }

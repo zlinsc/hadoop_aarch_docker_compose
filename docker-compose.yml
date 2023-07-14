@@ -7,7 +7,6 @@ services:
     extra_hosts:
       - 'master-node:172.20.0.2'
       - 'slave-node:172.20.0.3'
-      - 'mysql-node:172.20.0.4'
       - 'db-node:172.20.0.5'
     networks:
       my-hadoop:
@@ -28,7 +27,6 @@ services:
     extra_hosts:
       - 'master-node:172.20.0.2'
       - 'slave-node:172.20.0.3'
-      - 'mysql-node:172.20.0.4'
       - 'db-node:172.20.0.5'
     networks:
       my-hadoop:
@@ -43,22 +41,22 @@ services:
     tty: true
     stdin_open: true
 
-  mysql-node:
-    hostname: mysql-node
-    image: mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: 'root'
-    extra_hosts:
-      - 'master-node:172.20.0.2'
-      - 'slave-node:172.20.0.3'
-      - 'mysql-node:172.20.0.4'
-      - 'db-node:172.20.0.5'
-    networks:
-      my-hadoop:
-        ipv4_address: 172.20.0.4
-    expose:
-      - '20'
-      - '3306'
+  # mysql-node:
+  #   hostname: mysql-node
+  #   image: mysql
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: 'root'
+  #   extra_hosts:
+  #     - 'master-node:172.20.0.2'
+  #     - 'slave-node:172.20.0.3'
+  #     - 'mysql-node:172.20.0.4'
+  #     - 'db-node:172.20.0.5'
+  #   networks:
+  #     my-hadoop:
+  #       ipv4_address: 172.20.0.4
+  #   expose:
+  #     - '20'
+  #     - '3306'
 
   db-node:
     hostname: db-node
@@ -69,7 +67,6 @@ services:
     extra_hosts:
       - 'master-node:172.20.0.2'
       - 'slave-node:172.20.0.3'
-      - 'mysql-node:172.20.0.4'
       - 'db-node:172.20.0.5'
     networks:
       my-hadoop:
@@ -77,6 +74,7 @@ services:
     expose:
       - '20'
       - '5432'
+      - '3306'
     tty: true
     stdin_open: true
 

@@ -61,4 +61,11 @@ elif [ "$(hostname)" = "db-node" ]; then
     su - postgres -c "psql -c \"ALTER USER postgres PASSWORD '123456'\""
     psql -h db-node -p 5432 -U postgres -f psql_init.sql
 
+    #mysql
+    service mysql start
+    mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql mysql
+    cp /home/mysqld.cnf /etc/mysql/mysql.conf.d/mysqld.cnf
+    service mysql restart
+    mysql < mysql_init.sql
+
 fi

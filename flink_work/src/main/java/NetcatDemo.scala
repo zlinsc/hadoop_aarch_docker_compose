@@ -15,6 +15,6 @@ object NetcatDemo {
       }
     }).map(x => x.toLowerCase())
     out.print()
-    env.execute()
+    env.execute(getClass.getSimpleName.stripSuffix("$"))
   }
 }

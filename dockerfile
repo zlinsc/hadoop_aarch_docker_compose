@@ -1,15 +1,17 @@
 FROM ubuntu:18.04
 LABEL org.opencontainers.image.authors="jeff"
+ENV TZ=Asia/Shanghai
 
 WORKDIR /home
 
 EXPOSE 22
-RUN apt update && apt install -y openssh-server wget expect telnet curl ca-certificates gnupg vim
+RUN apt update && apt install -y openssh-server wget expect telnet curl ca-certificates gnupg vim less
 
 # install postgresql
 RUN curl https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor | tee /etc/apt/trusted.gpg.d/apt.postgresql.org.gpg >/dev/null && echo "deb http://apt.postgresql.org/pub/repos/apt bionic-pgdg main" > /etc/apt/sources.list.d/pgdg.list && apt update && apt install -y postgresql-12
 
 # install mysql
+RUN apt install -y mysql-server
 # RUN wget https://downloads.mysql.com/archives/get/p/23/file/mysql-8.0.32-linux-glibc2.17-aarch64.tar.gz
 # RUN tar -zxvf mysql-8.0.32-linux-glibc2.17-aarch64.tar.gz
 # RUN rm mysql-8.0.32-linux-glibc2.17-aarch64.tar.gz
@@ -31,12 +33,12 @@ ADD jdk-8u361-linux-aarch64.tar.gz .
 ADD hadoop-3.3.1-aarch64.tar.gz .
 ADD apache-hive-3.1.3-bin.tar.gz .
 ADD flink-1.17.0-bin-scala_2.12.tgz .
-ADD mysql-8.0.31-linux-glibc2.17-aarch64.tar.gz .
+# ADD mysql-8.0.31-linux-glibc2.17-aarch64.tar.gz .
 RUN mv jdk* jdk && \
     mv hadoop* hadoop && \
     mv apache-hive* hive && \
-    mv flink* flink && \
-    mv mysql* mysql
+    mv flink* flink
+    # mv mysql* mysql
 
 ENV JAVA_HOME /home/jdk
 ENV CLASSPATH=$JAVA_HOME/lib:$CLASSPATH
@@ -52,8 +54,8 @@ ENV FLINK_HOME /home/flink
 ENV PATH ${FLINK_HOME}/bin:$PATH
 
 # ENV MYSQL_HOME /usr/local/mysql
-ENV MYSQL_HOME /home/mysql
-ENV PATH ${MYSQL_HOME}/bin:$PATH
+# ENV MYSQL_HOME /home/mysql
+# ENV PATH ${MYSQL_HOME}/bin:$PATH
 
 # hadoop & hive & flink initialization
 RUN mkdir -p storage/hdfs/name && \
@@ -92,6 +94,7 @@ RUN chown postgres:postgres /etc/postgresql/12/main/postgresql.conf
 RUN echo "host    all             all             0.0.0.0/0                 md5" >> /etc/postgresql/12/main/pg_hba.conf
 
 # mysql setting
+COPY conf/mysql/mysqld.cnf .
 # RUN mkdir -p /usr/local/mysql
 # COPY conf/mysql/my.cnf .
 # RUN mysqld --defaults-file=/home/my.cnf --initialize
@@ -105,12 +108,12 @@ COPY psql_init.sql .
 COPY antlr4-runtime-4.8.jar protobuf-java-3.11.4.jar flink/lib/
 COPY jackson-databind-2.10.5.1.jar jackson-core-2.10.5.jar jackson-annotations-2.10.5.jar flink/lib/
 COPY connect-api-3.2.0.jar connect-runtime-3.2.0.jar connect-json-3.2.0.jar kafka-clients-3.2.0.jar flink/lib/
-COPY debezium-core-1.9.7.Final.jar debezium-embedded-1.9.7.Final.jar debezium-api-1.9.7.Final.jar flink/lib/
+COPY debezium-core-1.9.7.Final.jar debezium-embedded-1.9.7.Final.jar debezium-api-1.9.7.Final.jar debezium-ddl-parser-1.9.7.Final.jar flink/lib/
 COPY flink-cdc-base-2.4.0.jar flink-connector-debezium-2.4.0.jar flink/lib/
 # flink cdc jar - postgres
-COPY postgresql-42.5.1.jar debezium-connector-postgres-1.9.7.Final.jar flink-connector-postgres-cdc-2.4.0.jar flink/lib/
+COPY debezium-connector-postgres-1.9.7.Final.jar flink-connector-postgres-cdc-2.4.0.jar postgresql-42.5.1.jar flink/lib/
 # flink cdc jar - mysql 
-COPY mysql-connector-j-8.0.31.jar debezium-connector-mysql-1.9.7.Final.jar flink-connector-mysql-cdc-2.4.0.jar flink/lib/
+COPY debezium-connector-mysql-1.9.7.Final.cut.jar flink-connector-mysql-cdc-2.4.0.jar HikariCP-4.0.3.jar mysql-binlog-connector-java-0.27.2.jar mysql-connector-j-8.0.31.jar flink/lib/
 
 # docker startup script
 COPY init.sh .
