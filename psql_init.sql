@@ -1,9 +1,6 @@
--- alter user postgres replication;
-
 create database test_db;
 \c test_db;
 CREATE PUBLICATION dbz_publication FOR ALL TABLES;
--- select * from pg_publication_tables;
 
 CREATE TABLE users (
   user_id INTEGER NOT NULL PRIMARY KEY,

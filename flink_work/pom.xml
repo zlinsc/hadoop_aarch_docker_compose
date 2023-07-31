@@ -26,6 +26,13 @@
             <scope>provided</scope>
         </dependency>
 
+        <dependency>
+            <groupId>com.typesafe</groupId>
+            <artifactId>config</artifactId>
+            <version>1.4.2</version>
+            <scope>compile</scope>
+        </dependency>
+
         <!-- flink -->
         <dependency>
             <groupId>org.apache.flink</groupId>
@@ -49,7 +56,19 @@
         </dependency>
         <dependency>
             <groupId>com.ververica</groupId>
+            <artifactId>flink-sql-connector-postgres-cdc</artifactId>
+            <version>${cdc.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.ververica</groupId>
             <artifactId>flink-connector-mysql-cdc</artifactId>
+            <version>${cdc.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.ververica</groupId>
+            <artifactId>flink-sql-connector-mysql-cdc</artifactId>
             <version>${cdc.version}</version>
             <scope>provided</scope>
         </dependency>
@@ -67,12 +86,14 @@
             <version>${debezium.version}</version>
             <scope>provided</scope>
         </dependency>
+        <!-- exists class conflict, uses exclusive jar actually -->
         <dependency>
             <groupId>io.debezium</groupId>
             <artifactId>debezium-connector-postgres</artifactId>
             <version>${debezium.version}</version>
             <scope>provided</scope>
         </dependency>
+        <!-- exists class conflict, uses exclusive jar actually -->
         <dependency>
             <groupId>io.debezium</groupId>
             <artifactId>debezium-connector-mysql</artifactId>
@@ -219,31 +240,43 @@
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-shade-plugin</artifactId>
                         <version>3.2.4</version>
+                        <configuration>
+                            <filters>
+                                <filter>
+                                    <!-- 排除指定JAR中的类 -->
+                                    <artifact>io.debezium:debezium-connector-mysql</artifact>
+                                    <excludes>
+                                        <exclude>io/debezium/connector/mysql/MySqlConnection.class</exclude>
+                                        <exclude>io/debezium/connector/mysql/MySqlStreamingChangeEventSource.class</exclude>
+                                        <exclude>io/debezium/connector/mysql/antlr/listener/DefaultValueParserListener.class</exclude>
+                                    </excludes>
+                                </filter>
+                                <filter>
+                                    <!-- 排除指定JAR中的类 -->
+                                    <artifact>io.debezium:debezium-connector-postgres</artifact>
+                                    <excludes>
+                                        <exclude>io/debezium/connector/postgresql/connection/PostgresConnection.class</exclude>
+                                        <exclude>io/debezium/connector/postgresql/connection/Lsn.class</exclude>
+                                        <exclude>io/debezium/connector/postgresql/connection/PostgresReplicationConnection.class</exclude>
+                                        <exclude>io/debezium/connector/postgresql/PostgresStreamingChangeEventSource.class</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
                         <executions>
                             <execution>
                                 <phase>package</phase>
                                 <goals>
                                     <goal>shade</goal>
                                 </goals>
-                                <configuration>
-                                    <filters>
-                                        <filter>
-                                            <!-- 排除指定JAR中的类 -->
-                                            <artifact>*:io.debezium:debezium-connector-mysql</artifact>
-                                            <excludes>
-                                                <exclude>io/debezium/connector/mysql/MySqlConnection.class</exclude>
-                                                <exclude>io/debezium/connector/mysql/MySqlStreamingChangeEventSource.class</exclude>
-                                                <exclude>io/debezium/connector/mysql/antlr/listener/DefaultValueParserListener.class</exclude>
-                                            </excludes>
-                                        </filter>
-                                    </filters>
-                                </configuration>
                             </execution>
                         </executions>
                     </plugin>
 
                     <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-assembly-plugin</artifactId>
+                        <version>3.3.0</version>
                         <configuration>
                             <descriptorRefs>
                                 <descriptorRef>jar-with-dependencies</descriptorRef>
@@ -257,7 +290,7 @@
                         <executions>
                             <execution>
                                 <id>make-assembly</id>
-                                <phase>package</phase>
+                                <phase/>
                                 <goals>
                                     <goal>single</goal>
                                 </goals>

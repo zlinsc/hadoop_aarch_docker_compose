@@ -17,3 +17,4 @@ CREATE TABLE test_db.cdc_order (
 )	ENGINE = InnoDB
 	DEFAULT CHARSET=utf8;
 insert into test_db.cdc_order values ('ab1000', 'ad', '2023-07-01', 56.4, 32.4, '2023-07-01 12:33:09', 'jk1089463', 'jack', 'gz');
+insert into test_db.cdc_order values ('ab1001', 'ad', '2023-07-02', 16.2, 24, '2023-07-01 12:34:01', 'jk1089463', 'jackma', 'gz');

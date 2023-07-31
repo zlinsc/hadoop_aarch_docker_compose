@@ -111,9 +111,9 @@ COPY connect-api-3.2.0.jar connect-runtime-3.2.0.jar connect-json-3.2.0.jar kafk
 COPY debezium-core-1.9.7.Final.jar debezium-embedded-1.9.7.Final.jar debezium-api-1.9.7.Final.jar debezium-ddl-parser-1.9.7.Final.jar flink/lib/
 COPY flink-cdc-base-2.4.0.jar flink-connector-debezium-2.4.0.jar flink/lib/
 # flink cdc jar - postgres
-COPY debezium-connector-postgres-1.9.7.Final.jar flink-connector-postgres-cdc-2.4.0.jar postgresql-42.5.1.jar flink/lib/
-# flink cdc jar - mysql 
-COPY debezium-connector-mysql-1.9.7.Final.cut.jar flink-connector-mysql-cdc-2.4.0.jar HikariCP-4.0.3.jar mysql-binlog-connector-java-0.27.2.jar mysql-connector-j-8.0.31.jar flink/lib/
+COPY debezium-connector-postgres-1.9.7.Final.cut.jar flink-connector-postgres-cdc-2.4.0.jar flink-sql-connector-postgres-cdc-2.4.0.jar postgresql-42.5.1.jar flink/lib/
+# flink cdc jar - mysql
+COPY debezium-connector-mysql-1.9.7.Final.cut.jar flink-connector-mysql-cdc-2.4.0.jar flink-sql-connector-mysql-cdc-2.4.0.jar HikariCP-4.0.3.jar mysql-binlog-connector-java-0.27.2.jar mysql-connector-j-8.0.31.jar flink/lib/
 
 # docker startup script
 COPY init.sh .

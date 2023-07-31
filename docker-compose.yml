@@ -75,6 +75,8 @@ services:
       - '20'
       - '5432'
       - '3306'
+    ports:
+      - 5432:5432
     tty: true
     stdin_open: true
 

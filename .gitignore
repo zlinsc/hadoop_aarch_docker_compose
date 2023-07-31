@@ -4,4 +4,5 @@
 flink_work/target
 flink_work/.idea
 flink_work/flink_work.iml
+flink_work/src/main/resources/application_online.conf
 .DS_Store
