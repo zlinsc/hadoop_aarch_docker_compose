@@ -25,7 +25,7 @@ object PostgresCDCDemo {
 
     val env = StreamExecutionEnvironment.getExecutionEnvironment()
     env.enableCheckpointing(30000)
-//    env.fromSource(postgresIncrementalSource, WatermarkStrategy.noWatermarks[String](), "PostgresParallelSource")
+//    env.fromSource(postgresIncrementalSource, WatermarkStrategy.noWatermarks[String](), "Postgres CDC Source")
 //      .setParallelism(2).print()
     env.addSource(postgresIncrementalSource).print()
     env.execute(getClass.getSimpleName.stripSuffix("$"))

@@ -87,6 +87,38 @@
               </filters>
             </configuration>
           </plugin>
+          <plugin>
+            <artifactId>maven-assembly-plugin</artifactId>
+            <version>3.3.0</version>
+            <executions>
+              <execution>
+                <id>make-assembly</id>
+                <goals>
+                  <goal>single</goal>
+                </goals>
+                <configuration>
+                  <descriptorRefs>
+                    <descriptorRef>jar-with-dependencies</descriptorRef>
+                  </descriptorRefs>
+                  <archive>
+                    <manifest>
+                      <mainClass />
+                    </manifest>
+                  </archive>
+                </configuration>
+              </execution>
+            </executions>
+            <configuration>
+              <descriptorRefs>
+                <descriptorRef>jar-with-dependencies</descriptorRef>
+              </descriptorRefs>
+              <archive>
+                <manifest>
+                  <mainClass />
+                </manifest>
+              </archive>
+            </configuration>
+          </plugin>
         </plugins>
       </build>
     </profile>
@@ -143,6 +175,18 @@
     <dependency>
       <groupId>io.debezium</groupId>
       <artifactId>debezium-core</artifactId>
+      <version>1.9.7.Final</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.debezium</groupId>
+      <artifactId>debezium-connector-postgres</artifactId>
+      <version>1.9.7.Final</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.debezium</groupId>
+      <artifactId>debezium-connector-mysql</artifactId>
       <version>1.9.7.Final</version>
       <scope>provided</scope>
     </dependency>
