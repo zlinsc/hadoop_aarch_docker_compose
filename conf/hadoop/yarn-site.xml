@@ -27,6 +27,26 @@
         <value>org.apache.hadoop.mapred.ShuffleHandler</value>
     </property>
     <property>
+        <name>yarn.nodemanager.resource.memory-mb</name>
+        <value>4096</value>
+    </property>
+    <property>
+        <name>yarn.nodemanager.resource.cpu-vcores</name>
+        <value>4</value>
+    </property>
+    <property>    
+        <name>yarn.log-aggregation-enable</name>
+        <value>true</value>
+    </property> 
+    <property>
+        <name>yarn.nodemanager.remote-app-log-dir</name>
+        <value>/var/log/hadoop-yarn</value>
+    </property> 
+    <property>
+        <name>yarn.log-aggregation.retain-seconds</name>
+        <value>86400</value>
+    </property>
+    <property>
         <name>yarn.resourcemanager.address</name>
         <value>slave-node:8032</value>
     </property>

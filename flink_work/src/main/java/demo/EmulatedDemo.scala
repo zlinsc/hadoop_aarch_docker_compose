@@ -1,3 +1,5 @@
+package demo
+
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 
 object EmulatedDemo {

@@ -61,6 +61,18 @@
                         <exclude>io/debezium/connector/postgresql/PostgresStreamingChangeEventSource.class</exclude>
                       </excludes>
                     </filter>
+                    <filter>
+                      <artifact>com.ververica:flink-sql-connector-mysql-cdc</artifact>
+                      <excludes>
+                        <exclude>com/ververica/cdc/debezium/DebeziumDeserializationSchema.class</exclude>
+                      </excludes>
+                    </filter>
+                    <filter>
+                      <artifact>com.ververica:flink-sql-connector-postgres-cdc</artifact>
+                      <excludes>
+                        <exclude>com/ververica/cdc/debezium/DebeziumDeserializationSchema.class</exclude>
+                      </excludes>
+                    </filter>
                   </filters>
                 </configuration>
               </execution>
@@ -84,39 +96,19 @@
                     <exclude>io/debezium/connector/postgresql/PostgresStreamingChangeEventSource.class</exclude>
                   </excludes>
                 </filter>
+                <filter>
+                  <artifact>com.ververica:flink-sql-connector-mysql-cdc</artifact>
+                  <excludes>
+                    <exclude>com/ververica/cdc/debezium/DebeziumDeserializationSchema.class</exclude>
+                  </excludes>
+                </filter>
+                <filter>
+                  <artifact>com.ververica:flink-sql-connector-postgres-cdc</artifact>
+                  <excludes>
+                    <exclude>com/ververica/cdc/debezium/DebeziumDeserializationSchema.class</exclude>
+                  </excludes>
+                </filter>
               </filters>
-            </configuration>
-          </plugin>
-          <plugin>
-            <artifactId>maven-assembly-plugin</artifactId>
-            <version>3.3.0</version>
-            <executions>
-              <execution>
-                <id>make-assembly</id>
-                <goals>
-                  <goal>single</goal>
-                </goals>
-                <configuration>
-                  <descriptorRefs>
-                    <descriptorRef>jar-with-dependencies</descriptorRef>
-                  </descriptorRefs>
-                  <archive>
-                    <manifest>
-                      <mainClass />
-                    </manifest>
-                  </archive>
-                </configuration>
-              </execution>
-            </executions>
-            <configuration>
-              <descriptorRefs>
-                <descriptorRef>jar-with-dependencies</descriptorRef>
-              </descriptorRefs>
-              <archive>
-                <manifest>
-                  <mainClass />
-                </manifest>
-              </archive>
             </configuration>
           </plugin>
         </plugins>
@@ -128,6 +120,12 @@
       <groupId>org.scala-lang</groupId>
       <artifactId>scala-library</artifactId>
       <version>2.12.17</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.typesafe</groupId>
+      <artifactId>config</artifactId>
+      <version>1.4.2</version>
       <scope>provided</scope>
     </dependency>
     <dependency>
@@ -146,6 +144,12 @@
       <groupId>org.apache.flink</groupId>
       <artifactId>flink-connector-kafka</artifactId>
       <version>1.17.0</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.ververica</groupId>
+      <artifactId>flink-connector-debezium</artifactId>
+      <version>2.4.0</version>
       <scope>provided</scope>
     </dependency>
     <dependency>
@@ -169,12 +173,6 @@
     <dependency>
       <groupId>com.ververica</groupId>
       <artifactId>flink-sql-connector-mysql-cdc</artifactId>
-      <version>2.4.0</version>
-      <scope>provided</scope>
-    </dependency>
-    <dependency>
-      <groupId>com.ververica</groupId>
-      <artifactId>flink-connector-debezium</artifactId>
       <version>2.4.0</version>
       <scope>provided</scope>
     </dependency>

@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/sh
 docker-compose down
 docker image rm jeff/hadoop 
 docker build -f dockerfile -t jeff/hadoop:latest . 

@@ -1,3 +1,5 @@
+-- psql -h db-node -p 5432 -U postgres -f psql_init.sql
+
 create database test_db;
 \c test_db;
 CREATE PUBLICATION dbz_publication FOR ALL TABLES;

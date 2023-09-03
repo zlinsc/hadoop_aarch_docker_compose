@@ -1,3 +1,5 @@
+package demo
+
 import org.apache.flink.api.common.RuntimeExecutionMode
 import org.apache.flink.api.common.functions.FlatMapFunction
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment

@@ -20,10 +20,17 @@ if [ "$(hostname)" = "master-node" ]; then
     authority "slave-node"
     hdfs namenode -format
     /home/hadoop/sbin/start-dfs.sh
+    # /home/hadoop/sbin/start-yarn.sh
 
     #mysql
     # mysql -hmysql-node -uroot -proot -P3306 < mysql_init.sql
     # mysqlbinlog -hmysql-node -uroot -proot --read-from-remote-server binlog.000001 > /tmp/t.binlog
+
+    #kafka
+    zookeeper-server-start.sh -daemon /home/kafka/config/zookeeper.properties
+    kafka-server-start.sh -daemon /home/kafka/config/server.properties
+    sleep 1s
+    kafka-topics.sh --create --zookeeper localhost:2181 --topic cdctest --partitions 4 --replication-factor 1
 
 elif [ "$(hostname)" = "slave-node" ]; then
     #flink
@@ -52,6 +59,7 @@ elif [ "$(hostname)" = "slave-node" ]; then
     # sleep 1s
     nohup sql-gateway.sh start -Dsql-gateway.endpoint.rest.address=slave-node 2&> /home/flink/log/sql-gateway.log &
     # ./sql-client.sh gateway -e localhost:8083
+    hadoop fs -mkdir hdfs:///user/root/checkpoints
     sleep 1s
 
 elif [ "$(hostname)" = "db-node" ]; then

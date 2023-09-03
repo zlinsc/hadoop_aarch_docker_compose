@@ -38,6 +38,7 @@ services:
       - 8081:8081
       - 9000:9000
       - 8083:8083
+      - 8042:8042
     tty: true
     stdin_open: true
 

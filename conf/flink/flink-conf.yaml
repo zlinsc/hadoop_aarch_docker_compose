@@ -160,6 +160,7 @@ parallelism.default: 1
 # state backends.
 #
 # state.checkpoints.dir: hdfs://namenode-host:port/flink-checkpoints
+state.checkpoints.dir: hdfs://master-node:50070/user/root/checkpoints
 
 # Default target directory for savepoints, optional.
 #
