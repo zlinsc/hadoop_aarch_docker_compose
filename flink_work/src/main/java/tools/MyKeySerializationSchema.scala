@@ -7,7 +7,7 @@ class MyKeySerializationSchema extends SerializationSchema[JSONObject] {
   override def serialize(t: JSONObject): Array[Byte] = {
     val key = t.get("key").asInstanceOf[JSONObject]
     val it = key.keySet().iterator()
-    val k = if (it.hasNext) key.get(it.next()).asInstanceOf[String] else ""
+    val k = if (it.hasNext) key.get(it.next()).toString else ""
     k.getBytes("UTF-8")
   }
 }

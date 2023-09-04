@@ -29,6 +29,10 @@ object MysqlCDCProducer {
     chCfg.setExternalizedCheckpointCleanup(ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION)
 
     // source def
+    val startup = if (args.length < 2) StartupOptions.initial() else {
+      val specificOffsetArr = args(1).split(":") // mysql-bin.000001:5997
+      StartupOptions.specificOffset(specificOffsetArr(0), specificOffsetArr(1).toLong)
+    }
     val serverId = conf.getString("mysql.%s.serverId".format(db))
     val username = conf.getString("mysql.username")
     val password = conf.getString("mysql.password")
@@ -44,7 +48,7 @@ object MysqlCDCProducer {
       .tableList(tblList: _*)
       .username(username)
       .password(password)
-      .startupOptions(StartupOptions.initial())
+      .startupOptions(startup)
       .deserializer(new MyDeserializationSchema())
       .serverTimeZone("Asia/Shanghai")
       .build()

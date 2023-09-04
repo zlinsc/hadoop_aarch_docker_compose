@@ -53,7 +53,7 @@ class MyDeserializationSchema extends DebeziumDeserializationSchema[JSONObject] 
       jsonObj.put("op", op)
     }
 
-    println(jsonObj.toString)
+//    println(jsonObj.toString)
     collector.collect(jsonObj)
   }
 

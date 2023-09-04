@@ -49,6 +49,7 @@ object KafkaUtils {
       prop.setProperty("sasl.mechanism", "GSSAPI")
       prop.setProperty("sasl.kerberos.service.name", "kafka")
       prop.setProperty("sasl.jaas.config", getSaslJaasConfig)
+//      prop.setProperty("sasl.login.refresh.window.factor", "0.8")
     } else {
       prop.setProperty("bootstrap.servers", "172.20.0.2:9092")
     }
@@ -58,7 +59,7 @@ object KafkaUtils {
   def getSaslJaasConfig: String = {
     val keytabPath: String = conf.getString("kafka.keytabPath")
     val principal: String = conf.getString("kafka.principal") // change this according to submit node ip
-    "com.sun.security.auth.module.Krb5LoginModule required useKeyTab=true storeKey=true useTicketCache=false keyTab=\"%s\" principal=\"%s\";".format(keytabPath, principal)
+    "com.sun.security.auth.module.Krb5LoginModule required useKeyTab=true storeKey=true keyTab=\"%s\" principal=\"%s\";".format(keytabPath, principal)
   }
 
   def main(args: Array[String]): Unit = {
