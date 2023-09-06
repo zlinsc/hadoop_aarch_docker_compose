@@ -46,7 +46,8 @@ object MysqlCDCDemo {
       //      .splitSize(5)
       .serverTimeZone("Asia/Shanghai")
       .build()
-    val src = env.fromSource(mysqlSource, WatermarkStrategy.noWatermarks[JSONObject](), "Mysql CDC Source").uid("src")
+    val src = env.fromSource(mysqlSource, WatermarkStrategy.noWatermarks[JSONObject](), "Mysql CDC Source")
+      .uid("src")
       .asInstanceOf[DataStream[JSONObject]]
 
     val topic = "cdctest"
@@ -59,6 +60,7 @@ object MysqlCDCDemo {
         .build()
       )
       .setDeliveryGuarantee(DeliveryGuarantee.EXACTLY_ONCE)
+      .setTransactionalIdPrefix(System.currentTimeMillis().toString)
       .setKafkaProducerConfig(KafkaUtils.getProducerDefaultProp(false))
       .build()
 

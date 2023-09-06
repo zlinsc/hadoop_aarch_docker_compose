@@ -16,7 +16,8 @@ import scala.collection.JavaConverters._
 object MysqlCDCProducer {
 
   def main(args: Array[String]): Unit = {
-    // config
+    // init
+    println("args: " + args.mkString(";"))
     val arr = args(0).split('.')
     val (db, table, split) = (arr(0), arr(1), arr(2).toInt)
     printf("CDC DB: %s, TABLE: %s, SPLIT NO: %d\n", db, table, split)
@@ -29,14 +30,30 @@ object MysqlCDCProducer {
     chCfg.setExternalizedCheckpointCleanup(ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION)
 
     // source def
-    val startup = if (args.length < 2) StartupOptions.initial() else {
-      val specificOffsetArr = args(1).split(":") // mysql-bin.000001:5997
-      StartupOptions.specificOffset(specificOffsetArr(0), specificOffsetArr(1).toLong)
+    val startup = if (args.length < 2) {
+      println("startup option is initial")
+      StartupOptions.initial()
+    } else {
+      val specificArr = args(1).split("/")
+      specificArr(0) match {
+        case "pos" =>
+          // pos/mysql-bin.000001:5997
+          println("startup option is position, specific str is: " + specificArr(1))
+          val offsetArr = specificArr(1).split(":")
+          StartupOptions.specificOffset(offsetArr(0), offsetArr(1).toLong)
+        case "gtid" =>
+          // gtid/6dc8b5af-1616-11ec-8f60-a4ae12fe8402:1-20083670,6de8242f-1616-11ec-94a2-a4ae12fe9796:1-700110909
+          println("startup option is gtid, specific str is: " + specificArr(1))
+          StartupOptions.specificOffset(specificArr(1).trim)
+        case _ =>
+          throw new Exception("startup option is not support")
+      }
     }
-    val serverId = conf.getString("mysql.%s.serverId".format(db))
-    val username = conf.getString("mysql.username")
-    val password = conf.getString("mysql.password")
-    val group = conf.getConfigList("mysql.%s.instances".format(db)).asScala
+    val rootName = "mysql_%s".format(db)
+    val serverId = conf.getString("%s.serverId".format(rootName))
+    val username = conf.getString("%s.username".format(rootName))
+    val password = conf.getString("%s.password".format(rootName))
+    val group = conf.getConfigList("%s.instances".format(rootName)).asScala
     val g = group(split)
     val dbList = g.getStringList("databaseList").asScala
     val tblList = dbList.map(x => x + "." + table)
@@ -64,11 +81,13 @@ object MysqlCDCProducer {
         .build()
       )
       .setDeliveryGuarantee(DeliveryGuarantee.EXACTLY_ONCE)
+      .setTransactionalIdPrefix(System.currentTimeMillis().toString)
       .setKafkaProducerConfig(KafkaUtils.getProducerDefaultProp(true))
       .build()
 
     // calc
     val src = env.fromSource(mysqlSource, WatermarkStrategy.noWatermarks[JSONObject](), "Mysql CDC Source")
+      .uid("src")
     src.sinkTo(sink)
     env.execute(getClass.getSimpleName.stripSuffix("$"))
   }
