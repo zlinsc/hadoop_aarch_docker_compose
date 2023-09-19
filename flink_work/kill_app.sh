@@ -1,5 +1,5 @@
 #!/bin/bash
-
+# ./kill_app.sh p#cust.*.PROD_SPEC_INST_ATTR 7
 if [ $# -ne 2 ]; then
   echo "Usage: $0 <task_template> <max_number>"
   exit 1

@@ -9,7 +9,7 @@ class MyShardPartitioner extends FlinkKafkaPartitioner[JSONObject] {
 
   override def partition(record: JSONObject, key: Array[Byte], value: Array[Byte], targetTopic: String, partitions: Array[Int]): Int = {
     val i = math.abs(record.get("key").hashCode)
-//    println(record.toString, i % partitions.length)
+    println(i % partitions.length, record.toString)
     partitions(i % partitions.length)
   }
 }

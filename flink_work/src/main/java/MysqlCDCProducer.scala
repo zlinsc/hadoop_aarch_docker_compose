@@ -19,8 +19,8 @@ object MysqlCDCProducer {
     // init
     println("args: " + args.mkString(";"))
     val arr = args(0).split('.')
-    val (db, table, split) = (arr(0), arr(1), arr(2).toInt)
-    printf("CDC DB: %s, TABLE: %s, SPLIT NO: %d\n", db, table, split)
+    val (db, chunk, table) = (arr(0), arr(1).toInt, arr(2))
+    printf("CDC DB: %s, TABLE: %s, CHUNK NO: %d\n", db, table, chunk)
     val conf = ConfigFactory.load("app_online.conf")
     val env = StreamExecutionEnvironment.getExecutionEnvironment()
     env.enableCheckpointing(60000, CheckpointingMode.EXACTLY_ONCE)
@@ -42,7 +42,7 @@ object MysqlCDCProducer {
           val offsetArr = specificArr(1).split(":")
           StartupOptions.specificOffset(offsetArr(0), offsetArr(1).toLong)
         case "gtid" =>
-          // gtid/6dc8b5af-1616-11ec-8f60-a4ae12fe8402:1-20083670,6de8242f-1616-11ec-94a2-a4ae12fe9796:1-700110909
+          // gtid/       6dc8b5af-1616-11ec-8f60-a4ae12fe8402:1-20083670,6de8242f-1616-11ec-94a2-a4ae12fe9796:1-700110909
           println("startup option is gtid, specific str is: " + specificArr(1))
           StartupOptions.specificOffset(specificArr(1).trim)
         case _ =>
@@ -54,7 +54,7 @@ object MysqlCDCProducer {
     val username = conf.getString("%s.username".format(rootName))
     val password = conf.getString("%s.password".format(rootName))
     val group = conf.getConfigList("%s.instances".format(rootName)).asScala
-    val g = group(split)
+    val g = group(chunk)
     val dbList = g.getStringList("databaseList").asScala
     val tblList = dbList.map(x => x + "." + table)
     val mysqlSource = MySqlSource.builder[JSONObject]()

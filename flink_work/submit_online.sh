@@ -39,11 +39,11 @@ function producer_startup() {
     -Dyarn.application.name=p#$1 \
     -c MysqlCDCProducer flink_work-1.1.jar $param
 }
-producer_startup "cust.PROD_SPEC_INST_ATTR.0"
-producer_startup "cust.PROD_SPEC_INST_ATTR.1"
-producer_startup "cust.PROD_SPEC_INST_ATTR.2"
-producer_startup "cust.PROD_SPEC_INST_ATTR.3"
-producer_startup "cust.PROD_SPEC_INST_ATTR.4"
-producer_startup "cust.PROD_SPEC_INST_ATTR.5"
-producer_startup "cust.PROD_SPEC_INST_ATTR.6"
-producer_startup "cust.PROD_SPEC_INST_ATTR.7"
+producer_startup "cust.0.PROD_SPEC_INST_ATTR"
+producer_startup "cust.1.PROD_SPEC_INST_ATTR"
+producer_startup "cust.2.PROD_SPEC_INST_ATTR"
+producer_startup "cust.3.PROD_SPEC_INST_ATTR"
+producer_startup "cust.4.PROD_SPEC_INST_ATTR"
+producer_startup "cust.5.PROD_SPEC_INST_ATTR"
+producer_startup "cust.6.PROD_SPEC_INST_ATTR"
+producer_startup "cust.7.PROD_SPEC_INST_ATTR"

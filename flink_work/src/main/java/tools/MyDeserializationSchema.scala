@@ -53,6 +53,13 @@ class MyDeserializationSchema extends DebeziumDeserializationSchema[JSONObject] 
       jsonObj.put("op", op)
     }
 
+    val tsField = value.schema.field("ts_ms")
+    if (tsField != null) {
+      val ts = value.getInt64(tsField.name)
+      jsonObj.put("cdc_ts", ts.toString)
+    }
+    jsonObj.put("prd_ts", System.currentTimeMillis().toString)
+
 //    println(jsonObj.toString)
     collector.collect(jsonObj)
   }
