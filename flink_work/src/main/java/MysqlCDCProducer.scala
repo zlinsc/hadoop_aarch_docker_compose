@@ -9,14 +9,17 @@ import org.apache.flink.contrib.streaming.state.EmbeddedRocksDBStateBackend
 import org.apache.flink.streaming.api.CheckpointingMode
 import org.apache.flink.streaming.api.environment.CheckpointConfig.ExternalizedCheckpointCleanup
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
-import tools._
+import org.apache.kafka.clients.admin.{AdminClient, NewTopic}
+import tools.kafka.KafkaUtils.getDefaultProp
+import tools.kafka.{KafkaUtils, MyKeySerializationSchema, MyShardPartitioner, MyValueSerializationSchema}
+import tools.mysql.{MyDebeziumProps, MyDeserializationSchema}
 
 import scala.collection.JavaConverters._
 
 object MysqlCDCProducer {
 
   def main(args: Array[String]): Unit = {
-    // init
+    //// init
     println("args: " + args.mkString(";"))
     val arr = args(0).split('.')
     val (db, chunk, table) = (arr(0), arr(1).toInt, arr(2))
@@ -29,7 +32,7 @@ object MysqlCDCProducer {
     chCfg.setCheckpointStorage(conf.getString("flink.checkpointDir"))
     chCfg.setExternalizedCheckpointCleanup(ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION)
 
-    // source def
+    //// source
     val startup = if (args.length < 2) {
       println("startup option is initial")
       StartupOptions.initial()
@@ -42,7 +45,7 @@ object MysqlCDCProducer {
           val offsetArr = specificArr(1).split(":")
           StartupOptions.specificOffset(offsetArr(0), offsetArr(1).toLong)
         case "gtid" =>
-          // gtid/       6dc8b5af-1616-11ec-8f60-a4ae12fe8402:1-20083670,6de8242f-1616-11ec-94a2-a4ae12fe9796:1-700110909
+          // gtid/6dc8b5af-1616-11ec-8f60-a4ae12fe8402:1-20083670,6de8242f-1616-11ec-94a2-a4ae12fe9796:1-700110909
           println("startup option is gtid, specific str is: " + specificArr(1))
           StartupOptions.specificOffset(specificArr(1).trim)
         case _ =>
@@ -65,13 +68,28 @@ object MysqlCDCProducer {
       .tableList(tblList: _*)
       .username(username)
       .password(password)
+      .debeziumProperties(MyDebeziumProps.getDebeziumProperties)
       .startupOptions(startup)
       .deserializer(new MyDeserializationSchema())
-      .serverTimeZone("Asia/Shanghai")
+//      .serverTimeZone("Asia/Shanghai")
       .build()
 
-    // sink def
-    val topic = conf.getString("kafka.topic.%s".format(db))
+    //// sink
+    //    val topic = conf.getString("kafka.topic.%s".format(db))
+    val topic = "t_%s_%s".format(db.toLowerCase, table.toLowerCase)
+    val adminClient = AdminClient.create(getDefaultProp(true))
+    val listTopics = adminClient.listTopics()
+    if (listTopics.names().get().contains(topic)) {
+      printf("topic existed: %s\n", topic)
+    } else {
+      val partitionCount = group.length * dbList.length
+      val replicationFactor: Short = 3
+      val newTopic = new NewTopic(topic, partitionCount, replicationFactor)
+      val createRslt = adminClient.createTopics(Set(newTopic).asJava)
+      createRslt.values().get(topic)
+      printf("topic created successfully: %s\n", topic)
+    }
+    adminClient.close()
     val sink = KafkaSink.builder()
       .setRecordSerializer(KafkaRecordSerializationSchema.builder()
         .setTopic(topic)
@@ -82,13 +100,14 @@ object MysqlCDCProducer {
       )
       .setDeliveryGuarantee(DeliveryGuarantee.EXACTLY_ONCE)
       .setTransactionalIdPrefix(System.currentTimeMillis().toString)
-      .setKafkaProducerConfig(KafkaUtils.getProducerDefaultProp(true))
+      .setKafkaProducerConfig(KafkaUtils.getDefaultProp(true))
       .build()
 
-    // calc
-    val src = env.fromSource(mysqlSource, WatermarkStrategy.noWatermarks[JSONObject](), "Mysql CDC Source")
+    //// calc
+    env.fromSource(mysqlSource, WatermarkStrategy.noWatermarks[JSONObject](), "Mysql CDC Source")
       .uid("src")
-    src.sinkTo(sink)
+      .sinkTo(sink)
+      .uid("sink")
     env.execute(getClass.getSimpleName.stripSuffix("$"))
   }
 }

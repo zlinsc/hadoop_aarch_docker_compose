@@ -14,6 +14,8 @@ import org.apache.flink.streaming.api.environment.CheckpointConfig.ExternalizedC
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.slf4j.{Logger, LoggerFactory}
 import tools._
+import tools.kafka.{KafkaUtils, MyKeySerializationSchema, MyShardPartitioner, MyValueSerializationSchema}
+import tools.mysql.MyDeserializationSchema
 
 object MysqlCDCDemo {
 //  val LOG: Logger = LoggerFactory.getLogger(getClass)
@@ -61,7 +63,7 @@ object MysqlCDCDemo {
       )
       .setDeliveryGuarantee(DeliveryGuarantee.EXACTLY_ONCE)
       .setTransactionalIdPrefix(System.currentTimeMillis().toString)
-      .setKafkaProducerConfig(KafkaUtils.getProducerDefaultProp(false))
+      .setKafkaProducerConfig(KafkaUtils.getDefaultProp(false))
       .build()
 
     src.sinkTo(sink).uid("sink")

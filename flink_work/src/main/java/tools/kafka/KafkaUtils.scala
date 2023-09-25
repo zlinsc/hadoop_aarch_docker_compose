@@ -1,4 +1,4 @@
-package tools
+package tools.kafka
 
 import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
@@ -40,7 +40,7 @@ object KafkaUtils {
     prop
   }
 
-  def getProducerDefaultProp(online: Boolean): Properties = {
+  def getDefaultProp(online: Boolean): Properties = {
     val prop = new Properties()
     prop.setProperty("transaction.timeout.ms", "900000") // 15min
     if (online) {
@@ -49,7 +49,7 @@ object KafkaUtils {
       prop.setProperty("sasl.mechanism", "GSSAPI")
       prop.setProperty("sasl.kerberos.service.name", "kafka")
       prop.setProperty("sasl.jaas.config", getSaslJaasConfig)
-//      prop.setProperty("sasl.login.refresh.window.factor", "0.8")
+      //      prop.setProperty("sasl.login.refresh.window.factor", "0.8")
     } else {
       prop.setProperty("bootstrap.servers", "172.20.0.2:9092")
     }
@@ -65,10 +65,13 @@ object KafkaUtils {
   def main(args: Array[String]): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment()
 
-    val adminClient = AdminClient.create(getProducerDefaultProp(true))
-    val describeResult = adminClient.describeTopics(Set("topic_ctyun_teledb_cdc_performance_prod").asJava)
-    val td: TopicDescription = describeResult.allTopicNames().get.get("topic_ctyun_teledb_cdc_performance_prod")
-    println(td)
+    val adminClient = AdminClient.create(getDefaultProp(true))
+    val listTopics = adminClient.listTopics()
+    listTopics.names().get().forEach(println)
+
+//    val describeResult = adminClient.describeTopics(Set("topic_ctyun_teledb_cdc_performance_prod").asJava)
+//    val td: TopicDescription = describeResult.allTopicNames().get.get("topic_ctyun_teledb_cdc_performance_prod")
+//    println(td)
 
     // query topic desc
     //    val topics: ListTopicsResult = adminClient.listTopics()
