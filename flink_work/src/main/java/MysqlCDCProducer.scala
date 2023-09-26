@@ -33,11 +33,11 @@ object MysqlCDCProducer {
     chCfg.setExternalizedCheckpointCleanup(ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION)
 
     //// source
-    val startup = if (args.length < 2) {
+    val startup = if (!args.last.contains("/")) {
       println("startup option is initial")
       StartupOptions.initial()
     } else {
-      val specificArr = args(1).split("/")
+      val specificArr = args.last.split("/")
       specificArr(0) match {
         case "pos" =>
           // pos/mysql-bin.000001:5997
@@ -53,7 +53,7 @@ object MysqlCDCProducer {
       }
     }
     val rootName = "mysql_%s".format(db)
-    val serverId = conf.getString("%s.serverId".format(rootName))
+    val serverId = args(1)
     val username = conf.getString("%s.username".format(rootName))
     val password = conf.getString("%s.password".format(rootName))
     val group = conf.getConfigList("%s.instances".format(rootName)).asScala
@@ -71,12 +71,14 @@ object MysqlCDCProducer {
       .debeziumProperties(MyDebeziumProps.getDebeziumProperties)
       .startupOptions(startup)
       .deserializer(new MyDeserializationSchema())
-//      .serverTimeZone("Asia/Shanghai")
+      .serverTimeZone("Asia/Shanghai")
       .build()
 
     //// sink
     //    val topic = conf.getString("kafka.topic.%s".format(db))
-    val topic = "t_%s_%s".format(db.toLowerCase, table.toLowerCase)
+    val specSymb = table.indexOf("[")
+    val tableNew = if (specSymb == -1) table else table.substring(0, specSymb - 1)
+    val topic = "t_%s_%s".format(db.toLowerCase, tableNew.toLowerCase)
     val adminClient = AdminClient.create(getDefaultProp(true))
     val listTopics = adminClient.listTopics()
     if (listTopics.names().get().contains(topic)) {

@@ -129,7 +129,7 @@ object TestCDCConsumer {
       }
       (par, tbl)
     }).returns(TypeInformation.of(classOf[(String, String)]))
-      .filter(x => x._1 == "{\"UID\":415801471820}")
+//      .filter(x => x._1 == "{\"UID\":415801471820}")
 //      .filter(x => x._2 == table)
 //      .keyBy(new RowKeySelector)
 //      .process(new MyProcessFunc)
