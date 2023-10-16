@@ -110,6 +110,6 @@ object MysqlCDCProducer {
       .uid("src")
       .sinkTo(sink)
       .uid("sink")
-    env.execute(getClass.getSimpleName.stripSuffix("$"))
+    env.execute("p#%s.%d.%s".format(db, chunk, table))
   }
 }

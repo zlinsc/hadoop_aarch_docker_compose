@@ -1,4 +1,4 @@
-package tools
+package tools.flink
 
 import com.ververica.cdc.connectors.mysql.source.split.{MySqlBinlogSplit, MySqlSnapshotSplit, MySqlSplitSerializer}
 import org.apache.flink.api.common.typeinfo.TypeInformation
@@ -7,10 +7,9 @@ import org.apache.flink.contrib.streaming.state.EmbeddedRocksDBStateBackend
 import org.apache.flink.core.io.SimpleVersionedSerialization
 import org.apache.flink.state.api.{OperatorIdentifier, SavepointReader}
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
-import org.slf4j.{Logger, LoggerFactory}
 
 object RWState {
-//  val LOG: Logger = LoggerFactory.getLogger(getClass)
+  //  val LOG: Logger = LoggerFactory.getLogger(getClass)
 
   def main(args: Array[String]): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment()

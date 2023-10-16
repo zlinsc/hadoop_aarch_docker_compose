@@ -13,6 +13,7 @@
         <maven.compiler.target>8</maven.compiler.target>
         <flink.version>1.17.0</flink.version>
         <cdc.version>2.4.0</cdc.version>
+        <hudi.version>0.14.0</hudi.version>
         <debezium.version>1.9.7.Final</debezium.version>
         <kafka.version>3.2.0</kafka.version>
         <jackson.version>2.10.5</jackson.version>
@@ -64,6 +65,12 @@
             <version>${flink.version}</version>
             <scope>compile</scope>
         </dependency>
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-table-common</artifactId>
+            <version>${flink.version}</version>
+            <scope>compile</scope>
+        </dependency>
 
         <!-- flink cdc -->
         <dependency>
@@ -94,6 +101,14 @@
             <groupId>com.ververica</groupId>
             <artifactId>flink-sql-connector-mysql-cdc</artifactId>
             <version>${cdc.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Hudi -->
+        <dependency>
+            <groupId>org.apache.hudi</groupId>
+            <artifactId>hudi-flink</artifactId>
+            <version>${hudi.version}</version>
             <scope>provided</scope>
         </dependency>
 

@@ -1,4 +1,4 @@
-package tools
+package tools.flink
 
 import org.apache.flink.configuration.{ConfigOptions, Configuration}
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment

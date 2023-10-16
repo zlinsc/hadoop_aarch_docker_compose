@@ -177,6 +177,12 @@
       <scope>provided</scope>
     </dependency>
     <dependency>
+      <groupId>org.apache.hudi</groupId>
+      <artifactId>hudi-flink</artifactId>
+      <version>0.14.0</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
       <groupId>io.debezium</groupId>
       <artifactId>debezium-core</artifactId>
       <version>1.9.7.Final</version>
@@ -282,6 +288,7 @@
   <properties>
     <jackson.version>2.10.5</jackson.version>
     <flink.version>1.17.0</flink.version>
+    <hudi.version>0.14.0</hudi.version>
     <cdc.version>2.4.0</cdc.version>
     <maven.compiler.source>8</maven.compiler.source>
     <maven.compiler.target>8</maven.compiler.target>

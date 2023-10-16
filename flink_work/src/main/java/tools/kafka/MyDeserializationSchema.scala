@@ -9,10 +9,10 @@ import org.apache.kafka.clients.consumer.ConsumerRecord
 class MyDeserializationSchema extends KafkaRecordDeserializationSchema[String] {
 
   override def deserialize(consumerRecord: ConsumerRecord[Array[Byte], Array[Byte]], collector: Collector[String]): Unit = {
-    val par = consumerRecord.partition()
+//    val par = consumerRecord.partition()
     val r = new String(consumerRecord.value())
     val jsonObj = JSONObject.parseObject(r)
-    val tbl = jsonObj.getOrDefault("table", "").toString.toUpperCase
+//    val tbl = jsonObj.getOrDefault("table", "").toString.toUpperCase
     val key = jsonObj.getOrDefault("key", "").toString
     //    val p = par + "," + tbl
     val p = key + "###" + r

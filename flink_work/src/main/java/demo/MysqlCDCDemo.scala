@@ -4,6 +4,7 @@ import com.alibaba.fastjson2.JSONObject
 import com.typesafe.config.ConfigFactory
 import com.ververica.cdc.connectors.mysql.source.MySqlSource
 import com.ververica.cdc.connectors.mysql.table.StartupOptions
+import com.ververica.cdc.debezium.JsonDebeziumDeserializationSchema
 import org.apache.flink.api.common.eventtime.WatermarkStrategy
 import org.apache.flink.connector.base.DeliveryGuarantee
 import org.apache.flink.connector.kafka.sink.{KafkaRecordSerializationSchema, KafkaSink}
@@ -12,16 +13,14 @@ import org.apache.flink.streaming.api.CheckpointingMode
 import org.apache.flink.streaming.api.datastream.DataStream
 import org.apache.flink.streaming.api.environment.CheckpointConfig.ExternalizedCheckpointCleanup
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
-import org.slf4j.{Logger, LoggerFactory}
-import tools._
 import tools.kafka.{KafkaUtils, MyKeySerializationSchema, MyShardPartitioner, MyValueSerializationSchema}
 import tools.mysql.MyDeserializationSchema
 
 object MysqlCDCDemo {
-//  val LOG: Logger = LoggerFactory.getLogger(getClass)
+  //  val LOG: Logger = LoggerFactory.getLogger(getClass)
 
   def main(args: Array[String]): Unit = {
-//    LOG.info("starting job")
+    //    LOG.info("starting job")
     val conf = ConfigFactory.load("application.conf")
     val env = StreamExecutionEnvironment.getExecutionEnvironment()
     env.enableCheckpointing(60000, CheckpointingMode.EXACTLY_ONCE)
@@ -30,24 +29,25 @@ object MysqlCDCDemo {
     chCfg.setCheckpointStorage(conf.getString("flink.checkpointDir"))
     chCfg.setExternalizedCheckpointCleanup(ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION)
 
-    //    Seq(1).map(_ => {
+//    val mysqlSource = MySqlSource.builder[String]()
     val mysqlSource = MySqlSource.builder[JSONObject]()
       .serverId(conf.getString("mysql.serverId"))
       .hostname(conf.getString("mysql.hostname"))
       .port(conf.getInt("mysql.port"))
       .databaseList(conf.getString("mysql.database"))
       .tableList(conf.getString("mysql.table"))
-//      .scanNewlyAddedTableEnabled(true)
+      //      .scanNewlyAddedTableEnabled(true)
       .username(conf.getString("mysql.username"))
       .password(conf.getString("mysql.password"))
       .startupOptions(StartupOptions.initial())
-//      .startupOptions(StartupOptions.specificOffset("mysql-bin.000001", 5997))
+      //      .startupOptions(StartupOptions.specificOffset("mysql-bin.000001", 5997))
       .deserializer(new MyDeserializationSchema())
-      //            .deserializer(new JsonDebeziumDeserializationSchema())
-      //      .includeSchemaChanges(true)
-      //      .splitSize(5)
+//                  .deserializer(new JsonDebeziumDeserializationSchema())
+//      .includeSchemaChanges(true)
       .serverTimeZone("Asia/Shanghai")
       .build()
+//    env.fromSource(mysqlSource, WatermarkStrategy.noWatermarks[String](), "Mysql CDC Source").print()
+
     val src = env.fromSource(mysqlSource, WatermarkStrategy.noWatermarks[JSONObject](), "Mysql CDC Source")
       .uid("src")
       .asInstanceOf[DataStream[JSONObject]]
@@ -66,9 +66,8 @@ object MysqlCDCDemo {
       .setKafkaProducerConfig(KafkaUtils.getDefaultProp(false))
       .build()
 
+    src.print()
     src.sinkTo(sink).uid("sink")
-    //      src
-    //    }).reduce(_.union(_)).print()
 
     env.execute(getClass.getSimpleName.stripSuffix("$"))
   }
