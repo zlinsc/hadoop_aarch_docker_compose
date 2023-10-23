@@ -14,7 +14,8 @@ import org.apache.flink.table.api.Schema
 import org.apache.flink.table.data.{GenericRowData, RowData}
 import org.apache.flink.types.RowKind
 import org.apache.flink.util.Collector
-import org.apache.hudi.common.model.HoodieTableType
+import org.apache.hudi.common.model.{HoodieTableType, WriteOperationType}
+import org.apache.hudi.config.HoodieCleanConfig
 import org.apache.hudi.configuration.FlinkOptions
 import org.apache.hudi.util.HoodiePipeline
 import org.apache.kafka.clients.consumer.ConsumerRecord
@@ -25,6 +26,17 @@ import java.sql.{Connection, DriverManager, ResultSet}
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
 
+/**
+ * ## start app in yarn
+ * flink run-application -t yarn-application -Dclient.timeout=600s -Dparallelism.default=1 -Dtaskmanager.numberOfTaskSlots=1 \
+ * -Dtaskmanager.memory.process.size=1gb -Djobmanager.memory.process.size=1gb -Dtaskmanager.memory.managed.fraction=0.1 -Dclassloader.check-leaked-classloader=false \
+ * -Dyarn.application.name=hudi_demo -c demo.HudiDemo flink_work-1.1.jar
+ *
+ * ## offline compaction
+ * flink run-application -t yarn-application -Dclient.timeout=600s -Dparallelism.default=1 -Dtaskmanager.numberOfTaskSlots=1 \
+ * -Dtaskmanager.memory.process.size=1gb -Djobmanager.memory.process.size=1gb -Dtaskmanager.memory.managed.fraction=0.1 -Dclassloader.check-leaked-classloader=false \
+ * -Dyarn.application.name=hudi_demo_compaction -c org.apache.hudi.sink.compact.HoodieFlinkCompactor flink/lib/hudi-flink1.17-bundle-0.14.0-debug.jar --path hdfs://master-node:50070/tmp/cdc_order_hudi
+ */
 object HudiDemo {
   case class Person(name: String, age: Int, ds: String)
 
@@ -139,6 +151,28 @@ object HudiDemo {
       FlinkOptions.PATH.key() -> "hdfs://master-node:50070/tmp/cdc_order_hudi",
       FlinkOptions.TABLE_TYPE.key() -> HoodieTableType.MERGE_ON_READ.name(),
       //      FlinkOptions.PRECOMBINE_FIELD.key() -> "order_id"
+      FlinkOptions.OPERATION.key() -> WriteOperationType.UPSERT.value(),
+
+      FlinkOptions.HIVE_SYNC_ENABLED.key() -> "true",
+      FlinkOptions.HIVE_SYNC_DB.key() -> "hudi_db",
+      FlinkOptions.HIVE_SYNC_TABLE.key() -> "cdc_order",
+      FlinkOptions.HIVE_SYNC_MODE.key() -> "hms",
+      FlinkOptions.HIVE_SYNC_METASTORE_URIS.key() -> "thrift://slave-node:9083",
+
+      FlinkOptions.COMPACTION_SCHEDULE_ENABLED.key() -> "true",
+      FlinkOptions.COMPACTION_ASYNC_ENABLED.key() -> "false",
+      FlinkOptions.COMPACTION_TRIGGER_STRATEGY.key() -> "num_commits",
+      FlinkOptions.COMPACTION_DELTA_COMMITS.key() -> "3",
+
+      HoodieCleanConfig.ASYNC_CLEAN.key() -> "true",
+      HoodieCleanConfig.CLEAN_MAX_COMMITS.key() -> "1",
+      FlinkOptions.CLEAN_POLICY.key() -> "KEEP_LATEST_FILE_VERSIONS",
+      FlinkOptions.CLEAN_RETAIN_FILE_VERSIONS.key() -> "12",
+
+      //      HoodieWriteConfig.EMBEDDED_TIMELINE_SERVER_ENABLE.key() -> "false",
+      //      HoodieWriteConfig.EMBEDDED_TIMELINE_SERVER_PORT_NUM.key() -> "21230",
+      //      FileSystemViewStorageConfig.VIEW_TYPE.key() -> "MEMORY",
+      //      FileSystemViewStorageConfig.REMOTE_PORT_NUM.key() -> "21231"
     ).asJava
     val builder = HoodiePipeline.builder("cdc_order_hudi")
       .schema(schema)

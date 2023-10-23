@@ -286,13 +286,15 @@
     </dependency>
   </dependencies>
   <properties>
-    <jackson.version>2.10.5</jackson.version>
+    <hive.version>3.1.3</hive.version>
     <flink.version>1.17.0</flink.version>
+    <debezium.version>1.9.7.Final</debezium.version>
     <hudi.version>0.14.0</hudi.version>
     <cdc.version>2.4.0</cdc.version>
-    <maven.compiler.source>8</maven.compiler.source>
     <maven.compiler.target>8</maven.compiler.target>
     <kafka.version>3.2.0</kafka.version>
-    <debezium.version>1.9.7.Final</debezium.version>
+    <hadoop.version>3.3.1</hadoop.version>
+    <jackson.version>2.10.5</jackson.version>
+    <maven.compiler.source>8</maven.compiler.source>
   </properties>
 </project>
