@@ -8,7 +8,7 @@ import org.apache.flink.core.io.SimpleVersionedSerialization
 import org.apache.flink.state.api.{OperatorIdentifier, SavepointReader}
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 
-object RWState {
+object CDCStateReader {
   //  val LOG: Logger = LoggerFactory.getLogger(getClass)
 
   def main(args: Array[String]): Unit = {

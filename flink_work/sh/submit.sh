@@ -55,19 +55,19 @@ function loop_producer_startup() {
 
 
 #######################################################
-function get_app_id() {
-  if [ $# -ne 1 ]; then
-    echo "Usage: $0 <app_name>"
-    exit 1
-  fi
-  MAX_NUMBER=1
-  for ((i = 0; i < MAX_NUMBER; i++)); do
-    APP_NAME="$1"
-    APP_ID=$(yarn application -list | grep "$APP_NAME" | awk '{print $1}')
-    echo "$APP_ID"
-  done
-}
-
+#function get_app_id() {
+#  if [ $# -ne 1 ]; then
+#    echo "Usage: $0 <app_name>"
+#    exit 1
+#  fi
+#  MAX_NUMBER=1
+#  for ((i = 0; i < MAX_NUMBER; i++)); do
+#    APP_NAME="$1"
+#    APP_ID=$(yarn application -list | grep "$APP_NAME" | awk '{print $1}')
+#    echo "$APP_ID"
+#  done
+#}
+#
 #function producer_unified_startup() {
 #    export HADOOP_CLASSPATH=`hadoop classpath`
 #    ./flink-1.17.0/bin/yarn-session.sh --detached -Dyarn.provided.lib.dirs=hdfs://ctyunns/user/ads/flink/lib \
