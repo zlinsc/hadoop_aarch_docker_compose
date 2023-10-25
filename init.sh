@@ -20,10 +20,10 @@ if [ "$(hostname)" = "master-node" ]; then
     authority "slave-node"
     hdfs namenode -format
     /home/hadoop/sbin/start-dfs.sh
-    # /home/hadoop/sbin/start-yarn.sh
+    echo -e '\n\nexport HADOOP_CLASSPATH=`hadoop classpath`\n' >> /root/.bashrc
 
     #mysql
-    # mysql -hmysql-node -uroot -proot -P3306 < mysql_init.sql
+    # mysql -hmysql-node -uroot -proot -P3306 < init_mysql.sql
     # mysqlbinlog -hmysql-node -uroot -proot --read-from-remote-server binlog.000001 > /tmp/t.binlog
 
     #kafka
@@ -40,6 +40,8 @@ elif [ "$(hostname)" = "slave-node" ]; then
     authority 'master-node'
     authority 'slave-node'
     /home/hadoop/sbin/start-yarn.sh
+    # $HADOOP_HOME/sbin/yarn-daemon.sh start nodemanager
+    echo -e '\n\nexport HADOOP_CLASSPATH=`hadoop classpath`\n' >> /root/.bashrc
 
     #hive
     hadoop fs -mkdir -p /user/hive/warehouse
@@ -47,19 +49,23 @@ elif [ "$(hostname)" = "slave-node" ]; then
     hadoop fs -mkdir /tmp
     hadoop fs -chmod g+w /tmp
     schematool -dbType mysql -initSchema
-    nohup hive --service metastore -p 9083 2&> /home/hive/log/hms.log &
-    # sleep 1s
-    # nohup hive --hiveconf hive.root.logger=DEBUG,console --service metastore -p 9083 2&> /home/hive/log/hms.log &
-    # nohup hive --service hiveserver2 2&> /home/hive/log/hs2.log &
-    # beeline -u jdbc:hive2://localhost:10000 -n root
-    # mysql -u root -p 
+    nohup hive --service metastore -p 9083 &> /home/hive/log/hms.log &
+    # nohup hive --hiveconf hive.root.logger=DEBUG,console --service metastore -p 9083 &> /home/hive/log/hms.log &
+    sleep 1
+    nohup hive --service hiveserver2 &> /home/hive/log/hs2.log &
+    # beeline -u jdbc:hive2://slave-node:10000 -n root
 
     #flink
-    nohup start-cluster.sh 2&> /home/flink/log/start-cluster.log &
-    # sleep 1s
-    nohup sql-gateway.sh start -Dsql-gateway.endpoint.rest.address=slave-node 2&> /home/flink/log/sql-gateway.log &
+    hadoop fs -mkdir -p hdfs://master-node:50070/tmp/checkpoints
+    # export HADOOP_CLASSPATH=`hadoop classpath`
+    # yarn-session.sh --detached -Dyarn.application.name=flinksql -Dclient.timeout=600s -Dparallelism.default=1 -Dtaskmanager.numberOfTaskSlots=1 \
+    #     -Dtaskmanager.memory.process.size=1gb -Djobmanager.memory.process.size=1gb -Dtaskmanager.memory.managed.fraction=0.1
+    # sql-client.sh embedded -i /home/init_flink.sql -s yarn-session
+
+    # nohup start-cluster.sh &> /home/flink/log/start-cluster.log &
+    # nohup sql-gateway.sh start -Dsql-gateway.endpoint.rest.address=slave-node &> /home/flink/log/sql-gateway.log &
     # ./sql-client.sh gateway -e localhost:8083
-    hadoop fs -mkdir hdfs:///user/root/checkpoints
+
     sleep 1s
 
 elif [ "$(hostname)" = "db-node" ]; then
@@ -67,13 +73,13 @@ elif [ "$(hostname)" = "db-node" ]; then
     #psql
     pg_ctlcluster 12 main start
     su - postgres -c "psql -c \"ALTER USER postgres PASSWORD '123456'\""
-    psql -h db-node -p 5432 -U postgres -f psql_init.sql
+    psql -h db-node -p 5432 -U postgres -f init_psql.sql
 
     #mysql
     service mysql start
     mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql mysql
-    cp /home/mysqld.cnf /etc/mysql/mysql.conf.d/mysqld.cnf
+    mv /home/mysqld.cnf /etc/mysql/mysql.conf.d/mysqld.cnf
     service mysql restart
-    mysql < mysql_init.sql
+    mysql < init_mysql.sql
 
 fi

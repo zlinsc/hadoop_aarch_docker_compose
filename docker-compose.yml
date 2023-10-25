@@ -31,14 +31,19 @@ services:
     networks:
       my-hadoop:
         ipv4_address: 172.20.0.3
+    # privileged: true
     expose:
       - '20'
+      - '20230'
+      - '20231'
     ports:
       - 8088:8088
       - 8081:8081
       - 9000:9000
       - 8083:8083
       - 8042:8042
+      - 20230:20230
+      - 20231:20231
     tty: true
     stdin_open: true
 

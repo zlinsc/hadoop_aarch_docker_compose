@@ -1,7 +1,7 @@
 #!/bin/sh
 docker-compose down
-docker image rm jeff/hadoop 
-docker build -f dockerfile -t jeff/hadoop:latest . 
+# docker image rm jeff/hadoop 
+# docker build -f dockerfile -t jeff/hadoop:latest . 
 docker-compose up -d # docker-compose.yml
 
 dir_name=hadoop_aarch_docker_compose

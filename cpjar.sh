@@ -1,0 +1,2 @@
+#!/bin/sh
+docker cp ~/dockers/hadoop_aarch_docker_compose/flink_work/target/flink_work-1.1.jar hadoop_aarch_docker_compose-slave-node-1:/home/ && docker exec -it hadoop_aarch_docker_compose-slave-node-1 /bin/bash

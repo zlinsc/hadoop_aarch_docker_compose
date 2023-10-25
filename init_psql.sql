@@ -1,4 +1,4 @@
--- psql -h db-node -p 5432 -U postgres -f psql_init.sql
+-- psql -h db-node -p 5432 -U postgres -f init_psql.sql
 
 create database test_db;
 \c test_db;
