@@ -22,7 +22,7 @@ RUN apt install -y mysql-server
 
 # copy jar
 RUN mkdir -p jars
-COPY lib/*.jar jars
+COPY jars/*.jar jars
 
 # authority
 RUN echo "root:root" | chpasswd && \
@@ -142,7 +142,8 @@ RUN mv hudi-flink1.17-bundle-mod-0.14.0.jar flink-table-common-1.17.0.jar flink-
 # -- other tools
 RUN mv config-1.4.2.jar flink-connector-kafka-1.17.0.jar /home/flink/lib/
 # -- hive to hudi
-RUN mv hudi-flink1.17-bundle-mod-0.14.0.jar hudi-hadoop-mr-bundle-0.14.0.jar hudi-hive-sync-bundle-0.14.0.jar /home/hive/lib/
+RUN mv hudi-hadoop-mr-bundle-0.14.0.jar hudi-hive-sync-bundle-0.14.0.jar /home/hive/lib/
+RUN cp /home/flink/lib/hudi-flink1.17-bundle-mod-0.14.0.jar /home/hive/lib/
 WORKDIR /home
 
 # flink work jar

@@ -30,3 +30,4 @@ update test_db.cdc_order set pay_amount=56.6, real_pay=44.4 where order_id='ab10
 -- alter table test_db.cdc_order modify COLUMN user_id int;
 -- alter table test_db.cdc_order DROP COLUMN user_name;
 -- insert into test_db.cdc_order values ('ab1011', 'ad', '2023-07-02', 16.2, 24, '2023-07-03 12:30:12', 'jk1089463', 'sz', 'xxx@qq.com');
+insert into test_db.cdc_order values ('ab1011', 'ad', '2023-07-02', 16.2, 24, '2023-07-03 12:30:12', 'jk1089463', 'sz', 'xxx@qq.com');

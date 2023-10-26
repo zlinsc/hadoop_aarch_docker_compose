@@ -34,8 +34,8 @@ import scala.collection.mutable.ArrayBuffer
  *
  * ## offline compaction
  * flink run-application -t yarn-application -Dclient.timeout=600s -Dparallelism.default=1 -Dtaskmanager.numberOfTaskSlots=1 \
- * -Dtaskmanager.memory.process.size=1gb -Djobmanager.memory.process.size=1gb -Dtaskmanager.memory.managed.fraction=0.1 -Dclassloader.check-leaked-classloader=false \
- * -Dyarn.application.name=hudi_demo_compaction -c org.apache.hudi.sink.compact.HoodieFlinkCompactor flink/lib/hudi-flink1.17-bundle-0.14.0-debug.jar --path hdfs://master-node:50070/tmp/cdc_order_hudi
+  -Dtaskmanager.memory.process.size=1gb -Djobmanager.memory.process.size=1gb -Dtaskmanager.memory.managed.fraction=0.1 -Dclassloader.check-leaked-classloader=false \
+  -Dyarn.application.name=hudi_demo_compaction -c org.apache.hudi.sink.compact.HoodieFlinkCompactor flink/lib/hudi-flink1.17-bundle-0.14.0-debug.jar --path hdfs://master-node:50070/tmp/cdc_order_hudi
  */
 object HudiDemo {
   case class Person(name: String, age: Int, ds: String)
@@ -162,7 +162,7 @@ object HudiDemo {
       FlinkOptions.COMPACTION_SCHEDULE_ENABLED.key() -> "true",
       FlinkOptions.COMPACTION_ASYNC_ENABLED.key() -> "false",
       FlinkOptions.COMPACTION_TRIGGER_STRATEGY.key() -> "num_commits",
-      FlinkOptions.COMPACTION_DELTA_COMMITS.key() -> "3",
+      FlinkOptions.COMPACTION_DELTA_COMMITS.key() -> "5",
 
       HoodieCleanConfig.ASYNC_CLEAN.key() -> "true",
       HoodieCleanConfig.CLEAN_MAX_COMMITS.key() -> "1",
