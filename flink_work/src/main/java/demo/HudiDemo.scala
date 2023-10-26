@@ -35,7 +35,7 @@ import scala.collection.mutable.ArrayBuffer
  * ## offline compaction
  * flink run-application -t yarn-application -Dclient.timeout=600s -Dparallelism.default=1 -Dtaskmanager.numberOfTaskSlots=1 \
   -Dtaskmanager.memory.process.size=1gb -Djobmanager.memory.process.size=1gb -Dtaskmanager.memory.managed.fraction=0.1 -Dclassloader.check-leaked-classloader=false \
-  -Dyarn.application.name=hudi_demo_compaction -c org.apache.hudi.sink.compact.HoodieFlinkCompactor flink/lib/hudi-flink1.17-bundle-0.14.0-debug.jar --path hdfs://master-node:50070/tmp/cdc_order_hudi
+  -Dyarn.application.name=hudi_demo_compaction -c org.apache.hudi.sink.compact.HoodieFlinkCompactor flink/lib/hudi-flink1.17-bundle-mod-0.14.0.jar --path hdfs://master-node:50070/tmp/cdc_order_hudi
  */
 object HudiDemo {
   case class Person(name: String, age: Int, ds: String)
