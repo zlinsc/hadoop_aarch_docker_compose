@@ -82,6 +82,9 @@ object TestCDCConsumer {
     }
   }
 
+  /**
+   * order.inner_ord_offer_inst_pay_info 2023-10-22_00:00:00 t_order_inner_ord_offer_inst_pay_info
+   */
   def main(args: Array[String]): Unit = {
     // config
     val arr = args(0).split('.')
@@ -121,15 +124,15 @@ object TestCDCConsumer {
       .uid("src")
     src.map(x => {
       val arr = x.split("###")
-      var par = ""
-      var tbl = ""
+      var key = ""
+      var rec = ""
       if (arr.length == 2) {
-        par = arr(0)
-        tbl = arr(1)
+        key = arr(0)
+        rec = arr(1)
       }
-      (par, tbl)
+      (key, rec)
     }).returns(TypeInformation.of(classOf[(String, String)]))
-//      .filter(x => x._1 == "{\"UID\":415801471820}")
+//      .filter(x => x._1 == "{\"UID\":227334740}")
 //      .filter(x => x._2 == table)
 //      .keyBy(new RowKeySelector)
 //      .process(new MyProcessFunc)

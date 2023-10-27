@@ -44,12 +44,14 @@ ADD install/flink-1.17.0-bin-scala_2.12.tgz .
 # wget https://download.oracle.com/otn/java/jdk/8u361-b09/0ae14417abb444ebb02b9815e2103550/jdk-8u361-linux-aarch64.tar.gz
 ADD install/jdk-8u361-linux-aarch64.tar.gz .
 ADD install/kafka_2.11-2.0.1.tgz .
+ADD install/spark-3.1.3-bin-hadoop3.2.tgz .
 
 RUN mv jdk* jdk && \
     mv hadoop* hadoop && \
     mv apache-hive* hive && \
     mv flink* flink && \
-    mv kafka* kafka
+    mv kafka* kafka && \
+    mv spark* spark
     # mv mysql* mysql
 
 ENV JAVA_HOME /home/jdk
@@ -67,6 +69,9 @@ ENV PATH ${FLINK_HOME}/bin:$PATH
 
 ENV KAFKA_HOME /home/kafka
 ENV PATH ${KAFKA_HOME}/bin:$PATH
+
+ENV SPARK_HOME /home/spark
+ENV PATH ${SPARK_HOME}/bin:$PATH
 
 # ENV MYSQL_HOME /usr/local/mysql
 # ENV MYSQL_HOME /home/mysql
@@ -95,6 +100,8 @@ COPY conf/flink/masters flink/conf/
 COPY conf/flink/workers flink/conf/
 COPY conf/kafka/server.properties /home/kafka/config/
 COPY conf/kafka/kafka-run-class.sh /home/kafka/bin/
+COPY conf/spark/spark-defaults.conf /home/spark/conf/
+COPY conf/spark/spark-env.sh /home/spark/conf/
 
 # wget https://dev.mysql.com/get/Downloads/Connector-J/mysql-connector-j-8.0.32.tar.gz
 RUN cp jars/mysql-connector-j-8.0.31.jar hive/lib
@@ -128,7 +135,7 @@ COPY init_flink.sql .
 
 # flink cdc jar
 WORKDIR /home/jars
-RUN mv antlr4-runtime-4.8.jar protobuf-java-3.11.4.jar \
+RUN mv antlr4-runtime-4.8.jar protobuf-java-3.11.4.jar fastjson2-2.0.39.jar \
     jackson-databind-2.10.5.1.jar jackson-core-2.10.5.jar jackson-annotations-2.10.5.jar \
     connect-api-3.2.0.jar connect-runtime-3.2.0.jar connect-json-3.2.0.jar kafka-clients-3.2.0.jar \
     debezium-core-1.9.7.Final.jar debezium-embedded-1.9.7.Final.jar debezium-api-1.9.7.Final.jar debezium-ddl-parser-1.9.7.Final.jar \
@@ -141,9 +148,14 @@ RUN mv debezium-connector-mysql-1.9.7.Final.cut.jar flink-connector-mysql-cdc-2.
 RUN mv hudi-flink1.17-bundle-mod-0.14.0.jar flink-table-common-1.17.0.jar flink-hadoop-compatibility_2.12-1.17.1.jar avro-1.11.1.jar javalin-4.6.7.jar kotlin-stdlib-1.5.32.jar hive-common-3.1.3.jar hadoop-mapreduce-client-core-3.3.1.jar commons-lang-2.6.jar hive-exec-3.1.3-mod.jar calcite-core-1.16.0.jar libfb303-0.9.3.jar /home/flink/lib/
 # -- other tools
 RUN mv config-1.4.2.jar flink-connector-kafka-1.17.0.jar /home/flink/lib/
-# -- hive to hudi
+
+# -- hive init for hudi
 RUN mv hudi-hadoop-mr-bundle-0.14.0.jar hudi-hive-sync-bundle-0.14.0.jar /home/hive/lib/
 RUN cp /home/flink/lib/hudi-flink1.17-bundle-mod-0.14.0.jar /home/hive/lib/
+
+# spark init for hudi
+RUN mv hudi-spark3.1.3-bundle_2.12-0.14.0.jar /home/spark/jars/
+RUN hadoop fs -mkdir /jars && hadoop fs -put /home/spark/jars/* /jars/
 WORKDIR /home
 
 # flink work jar
