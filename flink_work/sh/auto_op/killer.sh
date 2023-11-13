@@ -1,5 +1,8 @@
 #!/bin/bash
 ### conf
+HADOOP_CLASSPATH=$(hadoop classpath)
+export HADOOP_CLASSPATH
+
 yarn_app_list_path="./yarn_app_list4killer.txt"
 
 ### init

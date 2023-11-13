@@ -1,6 +1,6 @@
 #!/bin/bash
-source killer.sh
-source routine.sh
+source /home/ads/cdc/killer.sh
+source /home/ads/cdc/routine.sh
 
 ### 杀死正则匹配的任务名
 #killer_with_hint "^p#acctdb...payment$"

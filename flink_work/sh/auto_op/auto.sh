@@ -1,5 +1,5 @@
 #!/bin/bash
-source routine.sh
+source /home/ads/cdc/routine.sh
 
 routine_with_checkpoint acctdb "acct_item_total_month_[0-9]{6}" 5401-5404 dws 1 8gb
 routine_with_checkpoint acctdb "order_info_log" 5405-5408 dwm 1 1gb
