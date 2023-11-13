@@ -52,6 +52,7 @@ function loop_producer_startup() {
     producer_startup "${db}.${i}.${table}" ${serverid} ${parall} ${gb} ${queue}
   done
 }
+#producer_startup "order.2.INNER_ORD_PROD_SPEC_INST_HIS" "5421-5424" 1 3gb dwm
 
 
 #######################################################

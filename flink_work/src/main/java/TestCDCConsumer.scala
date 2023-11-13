@@ -18,6 +18,7 @@ import tools.kafka.{KafkaUtils, MyDeserializationSchema}
 
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDateTime, ZoneOffset}
+import java.util.regex.Pattern
 
 object TestCDCConsumer {
   val LOG: Logger = LoggerFactory.getLogger(getClass)
@@ -34,15 +35,17 @@ object TestCDCConsumer {
     //    private var lastTime: Long = 0
 
     override def processElement(i: (String, String), ctx: KeyedProcessFunction[String, (String, String), String]#Context, collector: Collector[String]): Unit = {
-      if (cntCache.contains(i._1)) {
-//        LOG.error("xxxxxxxx===:"+i._1+","+cntCache.get(i._1))
-        if (!cntCache.get(i._1)) {
-          cntCache.put(i._1, true)
-          collector.collect(i._1)
-        }
-      } else {
-        cntCache.put(i._1, false)
-      }
+      LOG.info("xxxxxxxx===:"+i._1+","+i._2)
+      Thread.sleep(10000)
+//      if (cntCache.contains(i._1)) {
+////        LOG.error("xxxxxxxx===:"+i._1+","+cntCache.get(i._1))
+//        if (!cntCache.get(i._1)) {
+//          cntCache.put(i._1, true)
+//          collector.collect(i._1)
+//        }
+//      } else {
+//        cntCache.put(i._1, false)
+//      }
     }
 
     //    override def processElement(i: (String, String), ctx: KeyedProcessFunction[String, (String, String), String]#Context, collector: Collector[String]): Unit = {
@@ -119,6 +122,18 @@ object TestCDCConsumer {
       .build()
 
     // calc
+    val uids = Set(
+      "227332449",
+      "227332450",
+      "227334739",
+      "227334740",
+      "227387504",
+      "227345934",
+      "227367874",
+      "227367875",
+      "227367876",
+      "227367877",
+    )
     val src = env
       .fromSource(kafkaSource, WatermarkStrategy.noWatermarks[String](), "Kafka Source")
       .uid("src")
@@ -128,11 +143,14 @@ object TestCDCConsumer {
       var rec = ""
       if (arr.length == 2) {
         key = arr(0)
+        val matcher = Pattern.compile("\\d+").matcher(key)
+        if (matcher.find) key = matcher.group
         rec = arr(1)
       }
       (key, rec)
     }).returns(TypeInformation.of(classOf[(String, String)]))
-//      .filter(x => x._1 == "{\"UID\":227334740}")
+//      .filter(x => x._1 == "{\"UID\":227548715}")
+      .filter(x => uids.contains(x._1))
 //      .filter(x => x._2 == table)
 //      .keyBy(new RowKeySelector)
 //      .process(new MyProcessFunc)

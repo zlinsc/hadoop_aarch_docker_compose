@@ -20,6 +20,7 @@ object MysqlCDCProducer {
 
   def main(args: Array[String]): Unit = {
     //// init
+    //// args: db.i.table serverId gtid/6dc8b5af-1616-11ec-8f60-a4ae12fe8402:1-20083670
     println("args: " + args.mkString(";"))
     val arr = args(0).split('.')
     val (db, chunk, table) = (arr(0), arr(1).toInt, arr(2))
@@ -68,6 +69,7 @@ object MysqlCDCProducer {
       .tableList(tblList: _*)
       .username(username)
       .password(password)
+      .closeIdleReaders(true)
       .debeziumProperties(MyDebeziumProps.getDebeziumProperties)
       .startupOptions(startup)
       .deserializer(new MyDeserializationSchema())
@@ -76,6 +78,7 @@ object MysqlCDCProducer {
 
     //// sink
     //    val topic = conf.getString("kafka.topic.%s".format(db))
+    //// 将acct_item_total_month_[0-9]{6}转为acct_item_total_month
     val specSymb = table.indexOf("[")
     val tableNew = if (specSymb == -1) table else table.substring(0, specSymb - 1)
     val topic = "t_%s_%s".format(db.toLowerCase, tableNew.toLowerCase)
