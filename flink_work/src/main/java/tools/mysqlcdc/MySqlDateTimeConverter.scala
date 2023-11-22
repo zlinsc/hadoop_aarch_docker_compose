@@ -1,4 +1,4 @@
-package tools.mysql
+package tools.mysqlcdc
 
 import io.debezium.spi.converter.CustomConverter.{Converter, ConverterRegistration}
 import io.debezium.spi.converter.{CustomConverter, RelationalColumn}

@@ -7,7 +7,8 @@ flink_bin_dir=./flink-1.17.0/bin/
 kafka_kerberos_conf="-Dsecurity.kerberos.login.use-ticket-cache=true -Dsecurity.kerberos.login.contexts=Client,KafkaClient
                      -Dsecurity.kerberos.login.principal=ads/hdp-tmp007.nm.ctdcp.com@BIGDATA.CHINATELECOM.CN
                      -Dsecurity.kerberos.login.keytab=/etc/security/keytabs/ads.keytab"
-flink_default_conf="-Dyarn.provided.lib.dirs=hdfs://ctyunns/user/ads/flink/lib -Dclient.timeout=600s
+flink_default_conf="-Dyarn.provided.lib.dirs=hdfs://ctyunns/user/ads/flink/lib
+                    -Dclient.timeout=600s -Dtaskmanager.slot.timeout=300s -Dakka.ask.timeout=300s
                     -Djobmanager.archive.fs.dir=hdfs://ctyunns/flink-history/realjob
                     -Dhistoryserver.archive.fs.dir=hdfs://ctyunns/flink-history/realjob"
 

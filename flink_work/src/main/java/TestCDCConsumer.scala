@@ -1,5 +1,6 @@
 import com.typesafe.config.ConfigFactory
-import org.apache.flink.api.common.eventtime.{WatermarkGenerator, WatermarkGeneratorSupplier, WatermarkStrategy}
+import org.apache.flink.api.common.eventtime.WatermarkStrategy
+import org.apache.flink.api.common.serialization.SimpleStringSchema
 import org.apache.flink.api.common.state.{MapState, MapStateDescriptor}
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.functions.KeySelector
@@ -35,17 +36,17 @@ object TestCDCConsumer {
     //    private var lastTime: Long = 0
 
     override def processElement(i: (String, String), ctx: KeyedProcessFunction[String, (String, String), String]#Context, collector: Collector[String]): Unit = {
-      LOG.info("xxxxxxxx===:"+i._1+","+i._2)
-      Thread.sleep(10000)
-//      if (cntCache.contains(i._1)) {
-////        LOG.error("xxxxxxxx===:"+i._1+","+cntCache.get(i._1))
-//        if (!cntCache.get(i._1)) {
-//          cntCache.put(i._1, true)
-//          collector.collect(i._1)
-//        }
-//      } else {
-//        cntCache.put(i._1, false)
-//      }
+      LOG.info("xxxxxxxx===:" + i._1 + "," + i._2)
+//      Thread.sleep(10000)
+      //      if (cntCache.contains(i._1)) {
+      ////        LOG.error("xxxxxxxx===:"+i._1+","+cntCache.get(i._1))
+      //        if (!cntCache.get(i._1)) {
+      //          cntCache.put(i._1, true)
+      //          collector.collect(i._1)
+      //        }
+      //      } else {
+      //        cntCache.put(i._1, false)
+      //      }
     }
 
     //    override def processElement(i: (String, String), ctx: KeyedProcessFunction[String, (String, String), String]#Context, collector: Collector[String]): Unit = {
@@ -80,26 +81,26 @@ object TestCDCConsumer {
 
     override def open(parameters: Configuration): Unit = {
       cntCache = getRuntimeContext.getMapState(new MapStateDescriptor[String, Boolean]("cntCache", classOf[String], classOf[Boolean]))
-//      hasPrint = getRuntimeContext.getMapState(new MapStateDescriptor[String, Boolean]("hasPrint", classOf[String], classOf[Boolean]))
-//      lastTime = System.currentTimeMillis()
+      //      hasPrint = getRuntimeContext.getMapState(new MapStateDescriptor[String, Boolean]("hasPrint", classOf[String], classOf[Boolean]))
+      //      lastTime = System.currentTimeMillis()
     }
   }
 
   /**
-   * order.inner_ord_offer_inst_pay_info 2023-10-22_00:00:00 t_order_inner_ord_offer_inst_pay_info
+   * order.inner_ord_offer_inst_pay_info 2023-11-10_23:19:00 t_order_inner_ord_offer_inst_pay_info
    */
   def main(args: Array[String]): Unit = {
     // config
     val arr = args(0).split('.')
     val (db, table) = (arr(0), arr(1).toUpperCase)
     printf("CDC DB: %s, TABLE: %s\n", db, table)
-    val conf = ConfigFactory.load("app_online.conf")
+//    val conf = ConfigFactory.load("app_online.conf")
     val env = StreamExecutionEnvironment.getExecutionEnvironment()
-    env.enableCheckpointing(60000, CheckpointingMode.EXACTLY_ONCE)
-    env.setStateBackend(new EmbeddedRocksDBStateBackend(true))
-    val chCfg = env.getCheckpointConfig
-    chCfg.setCheckpointStorage(conf.getString("flink.checkpointDir"))
-    chCfg.setExternalizedCheckpointCleanup(ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION)
+//    env.enableCheckpointing(60000, CheckpointingMode.EXACTLY_ONCE)
+//    env.setStateBackend(new EmbeddedRocksDBStateBackend(true))
+//    val chCfg = env.getCheckpointConfig
+//    chCfg.setCheckpointStorage(conf.getString("flink.checkpointDir"))
+//    chCfg.setExternalizedCheckpointCleanup(ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION)
 
     // source def
     var offset = OffsetsInitializer.committedOffsets()
@@ -112,12 +113,12 @@ object TestCDCConsumer {
     }
     val kafkaSource = KafkaSource.builder[String]()
       .setBootstrapServers(KafkaUtils.getBrokerList)
-//      .setTopics(conf.getString("kafka.topicTest"))
+//            .setTopics(conf.getString("kafka.topicTest"))
       .setTopics(args(2))
       .setGroupId("c_mysql_cdc_group")
       .setStartingOffsets(offset)
       .setDeserializer(new MyDeserializationSchema)
-      //            .setValueOnlyDeserializer(new SimpleStringSchema())
+//                  .setValueOnlyDeserializer(new SimpleStringSchema())
       .setProperties(KafkaUtils.getDefaultProp(true))
       .build()
 
@@ -149,12 +150,11 @@ object TestCDCConsumer {
       }
       (key, rec)
     }).returns(TypeInformation.of(classOf[(String, String)]))
-//      .filter(x => x._1 == "{\"UID\":227548715}")
-      .filter(x => uids.contains(x._1))
-//      .filter(x => x._2 == table)
-//      .keyBy(new RowKeySelector)
-//      .process(new MyProcessFunc)
-      .print()
+      //      .filter(x => x._1 == "{\"UID\":227548715}")
+//      .filter(x => uids.contains(x._1))
+      //      .filter(x => x._2 == table)
+            .keyBy(new RowKeySelector)
+            .process(new MyProcessFunc)
       .setParallelism(1)
 
     env.execute(getClass.getSimpleName.stripSuffix("$"))

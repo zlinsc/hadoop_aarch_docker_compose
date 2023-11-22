@@ -26,3 +26,4 @@ function flink_read_state() {
       fi
     done
 }
+flink_read_state "hdfs://ctyunns/user/ads/flink/checkpoints/eaf6b1e68063c6def145e4389298fce7/chk-421"

@@ -1,15 +1,26 @@
 package tools.flink
 
+import com.alibaba.fastjson2.JSONObject
+import com.ververica.cdc.connectors.mysql.schema.MySqlTypeUtils
+import io.debezium.relational.Column
 import org.apache.flink.table.api.DataTypes
 import org.apache.flink.table.data.{DecimalData, StringData}
 import org.apache.flink.table.types.DataType
 import org.apache.flink.table.types.logical._
 import org.apache.flink.table.types.logical.utils.LogicalTypeChecks
+import org.slf4j.{Logger, LoggerFactory}
 
 import java.math.BigDecimal
 import java.time.{Instant, ZoneId}
 
 object RowUtils {
+  val LOG: Logger = LoggerFactory.getLogger(getClass)
+
+//  def convertValue(x: JSONObject, colName: String, colType: String): Any = {
+//    LOG.info("convertValue: " + colName + "=>" + colType)
+//    convertValue(x.get(colName), transMySQLColType(colType))
+//  }
+
   def convertValue(value: Any, dataType: DataType): Any = {
     if (value == null) {
       return null

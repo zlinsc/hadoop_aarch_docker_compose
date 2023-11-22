@@ -1,4 +1,4 @@
-package tools.mysql
+package tools.mysqlcdc
 
 import com.alibaba.fastjson2.JSONObject
 import com.ververica.cdc.debezium.DebeziumDeserializationSchema
@@ -6,6 +6,7 @@ import org.apache.flink.api.common.typeinfo.{TypeInformation, Types}
 import org.apache.flink.util.Collector
 import org.apache.kafka.connect.data.Struct
 import org.apache.kafka.connect.source.SourceRecord
+import org.slf4j.{Logger, LoggerFactory}
 
 import scala.collection.JavaConverters._
 
@@ -56,10 +57,12 @@ import scala.collection.JavaConverters._
     "prd_ts":"1695633598220"
 }
  */
-class MyDeserializationSchema extends DebeziumDeserializationSchema[JSONObject] {
+class JsonDeserializationSchema extends DebeziumDeserializationSchema[JSONObject] {
+//  private val LOG: Logger = LoggerFactory.getLogger(getClass)
 
   @throws[Exception]
   override def deserialize(sourceRecord: SourceRecord, collector: Collector[JSONObject]): Unit = {
+//    LOG.info(sourceRecord.toString)
     val jsonObj = new JSONObject()
 
     val topic = sourceRecord.topic()
@@ -107,7 +110,6 @@ class MyDeserializationSchema extends DebeziumDeserializationSchema[JSONObject] 
     }
     jsonObj.put("prd_ts", System.currentTimeMillis().toString)
 
-//    println(jsonObj.toString)
     collector.collect(jsonObj)
   }
 

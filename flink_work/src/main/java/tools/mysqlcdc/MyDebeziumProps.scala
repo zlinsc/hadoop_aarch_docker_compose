@@ -1,4 +1,4 @@
-package tools.mysql
+package tools.mysqlcdc
 
 import java.util.Properties
 

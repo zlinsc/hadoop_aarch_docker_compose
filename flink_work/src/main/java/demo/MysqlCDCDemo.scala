@@ -4,6 +4,7 @@ import com.alibaba.fastjson2.JSONObject
 import com.typesafe.config.ConfigFactory
 import com.ververica.cdc.connectors.mysql.source.MySqlSource
 import com.ververica.cdc.connectors.mysql.table.StartupOptions
+import com.ververica.cdc.debezium.JsonDebeziumDeserializationSchema
 import org.apache.flink.api.common.eventtime.WatermarkStrategy
 import org.apache.flink.connector.base.DeliveryGuarantee
 import org.apache.flink.connector.kafka.sink.{KafkaRecordSerializationSchema, KafkaSink}
@@ -13,7 +14,7 @@ import org.apache.flink.streaming.api.datastream.DataStream
 import org.apache.flink.streaming.api.environment.CheckpointConfig.ExternalizedCheckpointCleanup
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import tools.kafka.{KafkaUtils, MyKeySerializationSchema, MyShardPartitioner, MyValueSerializationSchema}
-import tools.mysql.MyDeserializationSchema
+import tools.mysqlcdc.JsonDeserializationSchema
 
 /**
  * ## start app in yarn
@@ -41,7 +42,7 @@ object MysqlCDCDemo {
     //    newFlinkConf.setString("yarn.application.id", YarnUtils.getAppID("flinksql"))
     //    env.getConfig.setGlobalJobParameters(newFlinkConf)
 
-    //    val mysqlSource = MySqlSource.builder[String]()
+//        val mysqlSource = MySqlSource.builder[String]()
     val mysqlSource = MySqlSource.builder[JSONObject]()
       .serverId(conf.getString("mysql.serverId"))
       .hostname(conf.getString("mysql.hostname"))
@@ -53,33 +54,33 @@ object MysqlCDCDemo {
       .password(conf.getString("mysql.password"))
       .startupOptions(StartupOptions.initial())
       //      .startupOptions(StartupOptions.specificOffset("mysql-bin.000001", 5997))
-      .deserializer(new MyDeserializationSchema())
-      //                  .deserializer(new JsonDebeziumDeserializationSchema())
-      //      .includeSchemaChanges(true)
+      .deserializer(new JsonDeserializationSchema())
+//                        .deserializer(new JsonDebeziumDeserializationSchema())
       .serverTimeZone("Asia/Shanghai")
+//      .includeSchemaChanges(true)
       .build()
-    //    env.fromSource(mysqlSource, WatermarkStrategy.noWatermarks[String](), "Mysql CDC Source").print()
 
+//        val src = env.fromSource(mysqlSource, WatermarkStrategy.noWatermarks[String](), "Mysql CDC Source")
     val src = env.fromSource(mysqlSource, WatermarkStrategy.noWatermarks[JSONObject](), "Mysql CDC Source")
       .uid("src")
       .asInstanceOf[DataStream[JSONObject]]
 
-    val topic = "cdctest"
-    val sink = KafkaSink.builder()
-      .setRecordSerializer(KafkaRecordSerializationSchema.builder()
-        .setTopic(topic)
-        .setPartitioner(new MyShardPartitioner)
-        .setKeySerializationSchema(new MyKeySerializationSchema)
-        .setValueSerializationSchema(new MyValueSerializationSchema)
-        .build()
-      )
-      .setDeliveryGuarantee(DeliveryGuarantee.EXACTLY_ONCE)
-      .setTransactionalIdPrefix(System.currentTimeMillis().toString)
-      .setKafkaProducerConfig(KafkaUtils.getDefaultProp(false))
-      .build()
+//    val topic = "cdctest"
+//    val sink = KafkaSink.builder()
+//      .setRecordSerializer(KafkaRecordSerializationSchema.builder()
+//        .setTopic(topic)
+//        .setPartitioner(new MyShardPartitioner)
+//        .setKeySerializationSchema(new MyKeySerializationSchema)
+//        .setValueSerializationSchema(new MyValueSerializationSchema)
+//        .build()
+//      )
+//      .setDeliveryGuarantee(DeliveryGuarantee.EXACTLY_ONCE)
+//      .setTransactionalIdPrefix(System.currentTimeMillis().toString)
+//      .setKafkaProducerConfig(KafkaUtils.getDefaultProp(false))
+//      .build()
 
     src.print()
-    src.sinkTo(sink).uid("sink")
+//    src.sinkTo(sink).uid("sink")
 
     env.execute(getClass.getSimpleName.stripSuffix("$"))
   }

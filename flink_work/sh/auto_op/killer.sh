@@ -14,7 +14,7 @@ function killer_inner() {
   local killer_ask_switch=$1
   local app_name_pattern=$2
 
-  local line_select=$(cat $yarn_app_list_path | awk '{print $2}' | sed 's/\[/\\[/g;s/\]/\\]/g' | grep -n "$app_name_pattern" | cut -d: -f1 | sed 's/$/p/' | tr '\n' ';')
+  local line_select=$(cat $yarn_app_list_path | awk '{print $2}' | sed 's/\[/\\[/g;s/\]/\\]/g' | grep -n -i "$app_name_pattern" | cut -d: -f1 | sed 's/$/p/' | tr '\n' ';')
   local line_cnt=0
   if [ -n "$line_select" ]; then
     line_cnt=$(sed -n $line_select $yarn_app_list_path | awk '{print $7}' | grep -E -v 'FINISHED|FAILED|KILLED' | wc -l)

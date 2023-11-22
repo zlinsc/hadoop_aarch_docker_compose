@@ -12,7 +12,7 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.kafka.clients.admin.{AdminClient, NewTopic}
 import tools.kafka.KafkaUtils.getDefaultProp
 import tools.kafka.{KafkaUtils, MyKeySerializationSchema, MyShardPartitioner, MyValueSerializationSchema}
-import tools.mysql.{MyDebeziumProps, MyDeserializationSchema}
+import tools.mysqlcdc.{MyDebeziumProps, JsonDeserializationSchema}
 
 import scala.collection.JavaConverters._
 
@@ -72,7 +72,7 @@ object MysqlCDCProducer {
       .closeIdleReaders(true)
       .debeziumProperties(MyDebeziumProps.getDebeziumProperties)
       .startupOptions(startup)
-      .deserializer(new MyDeserializationSchema())
+      .deserializer(new JsonDeserializationSchema())
       .serverTimeZone("Asia/Shanghai")
       .build()
 
