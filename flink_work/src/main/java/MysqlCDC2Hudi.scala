@@ -32,7 +32,8 @@ import org.apache.hudi.util.HoodiePipeline
 import org.apache.kafka.connect.data.Struct
 import org.apache.kafka.connect.source.SourceRecord
 import org.slf4j.{Logger, LoggerFactory}
-import tools.mysqlcdc.{RowDataDeserializationRuntimeConverter, MyDebeziumProps}
+import tools.mysql.ShardDeserializationRuntimeConverterFactory
+import tools.mysqlcdc.{MyDebeziumProps, RowDataDeserializationRuntimeConverter}
 
 import java.time.ZoneId
 import scala.collection.JavaConverters._
@@ -127,7 +128,7 @@ object MysqlCDC2Hudi {
       .username(username)
       .password(password)
       .closeIdleReaders(false)
-      .includeSchemaChanges(false)
+      .includeSchemaChanges(true)
       .debeziumProperties(MyDebeziumProps.getDebeziumProperties)
       .startupOptions(startup)
       .serverTimeZone(timeZone)
@@ -166,7 +167,7 @@ object MysqlCDC2Hudi {
       .username(username)
       .password(password)
       .closeIdleReaders(false)
-      .includeSchemaChanges(false)
+      .includeSchemaChanges(true)
       .debeziumProperties(MyDebeziumProps.getDebeziumProperties)
       .startupOptions(startup)
       .serverTimeZone(timeZone)
@@ -174,13 +175,14 @@ object MysqlCDC2Hudi {
         override def deserialize(sourceRecord: SourceRecord, out: Collector[RecPack]): Unit = {
           val topic = sourceRecord.topic()
           val arr = topic.split("\\.")
-          if (arr.length != 3) {
-            // todo
-            LOG.warn("without db&table: " + sourceRecord.toString)
-          } else {
+          if (arr.length == 1) {
+            LOG.warn("without handler: " + sourceRecord.toString)
+          } else if (arr.length == 3) {
             val db = arr(1)
             val table = arr(2)
             out.collect(RecPack(db, table, sourceRecord))
+          } else {
+            LOG.warn("without handler: " + sourceRecord.toString)
           }
         }
 
@@ -212,8 +214,8 @@ object MysqlCDC2Hudi {
           val opField = value.schema.field("op")
           if (opField != null) {
             val fullName = "%s.%s".format(e.db, e.table)
-            val conv = RowDataDeserializationRuntimeConverter
-              .createConverter(checkNotNull(tableRowTypeMap(fullName)), ZoneId.of(timeZone), null)
+            val conv = RowDataDeserializationRuntimeConverter.createConverter(checkNotNull(tableRowTypeMap(fullName)),
+              ZoneId.of(timeZone), new ShardDeserializationRuntimeConverterFactory(SET_SHARDING, sharding))
 
             val op = value.getString(opField.name)
             if (op == "c" || op == "r") {
