@@ -282,12 +282,12 @@ object MysqlCDC2Hudi {
         FlinkOptions.CLEAN_RETAIN_COMMITS.key() -> "10080",
         HoodieArchivalConfig.ASYNC_ARCHIVE.key() -> "true"
       ).asJava
-      val hudiBuilder = HoodiePipeline.builder("%s.%s".format(targetDB, targetTable))
+      val hudiBuilder = HoodiePipeline.builder("%s_%s".format(targetDB, targetTable))
         .schema(schema)
         .pk(tablePkMap(headTbl): _*)
         .partition(SET_SHARDING)
         .options(options)
-      hudiBuilder.sink(srcByTag, false).uid("sink2Hudi")
+      hudiBuilder.sink(srcByTag, false).uid("sink2Hudi:" + x)
     }
 
     //// finish
