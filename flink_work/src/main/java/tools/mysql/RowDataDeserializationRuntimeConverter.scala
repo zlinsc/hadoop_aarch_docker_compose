@@ -1,4 +1,4 @@
-package tools.mysqlcdc
+package tools.mysql
 
 import com.ververica.cdc.connectors.shaded.org.apache.kafka.connect.data.Struct
 import com.ververica.cdc.debezium.table._

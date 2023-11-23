@@ -5,7 +5,7 @@ import org.apache.flink.table.api.DataTypes
 import org.apache.flink.table.data.GenericRowData
 import org.apache.flink.table.types.logical.{LogicalType, LogicalTypeRoot, RowType}
 import org.apache.kafka.connect.data.{Field, Schema, Struct}
-import tools.mysqlcdc.RowDataDeserializationRuntimeConverter
+import tools.mysql.RowDataDeserializationRuntimeConverter
 
 import java.time.ZoneId
 import java.util.Optional

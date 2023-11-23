@@ -12,7 +12,7 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.kafka.clients.admin.{AdminClient, NewTopic}
 import tools.kafka.KafkaUtils.getDefaultProp
 import tools.kafka.{KafkaUtils, MyKeySerializationSchema, MyShardPartitioner, MyValueSerializationSchema}
-import tools.mysqlcdc.{MyDebeziumProps, JsonDeserializationSchema}
+import tools.mysql.{MyDebeziumProps, JsonDeserializationSchema}
 
 import scala.collection.JavaConverters._
 

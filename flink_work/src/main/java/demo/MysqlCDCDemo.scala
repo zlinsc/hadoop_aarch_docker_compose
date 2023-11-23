@@ -14,7 +14,7 @@ import org.apache.flink.streaming.api.datastream.DataStream
 import org.apache.flink.streaming.api.environment.CheckpointConfig.ExternalizedCheckpointCleanup
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import tools.kafka.{KafkaUtils, MyKeySerializationSchema, MyShardPartitioner, MyValueSerializationSchema}
-import tools.mysqlcdc.JsonDeserializationSchema
+import tools.mysql.JsonDeserializationSchema
 
 /**
  * ## start app in yarn

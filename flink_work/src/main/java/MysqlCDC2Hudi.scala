@@ -33,7 +33,7 @@ import org.apache.kafka.connect.data.Struct
 import org.apache.kafka.connect.source.SourceRecord
 import org.slf4j.{Logger, LoggerFactory}
 import tools.mysql.ShardDeserializationRuntimeConverterFactory
-import tools.mysqlcdc.{MyDebeziumProps, RowDataDeserializationRuntimeConverter}
+import tools.mysql.{MyDebeziumProps, RowDataDeserializationRuntimeConverter}
 
 import java.time.ZoneId
 import scala.collection.JavaConverters._
@@ -197,7 +197,7 @@ object MysqlCDC2Hudi {
         val tagName = regex.replaceAllIn(e.db, "") + "." + e.table
         val outTag = new OutputTag[java.io.Serializable](tagName)
         ctx.output(outTag, e)
-      }).uid("output-tag")
+      }).setParallelism(1).uid("output-tag")
 
     tblList.map(tag => {
       val srcByTag = mainStream.getSideOutput(new OutputTag[java.io.Serializable](tag)).asInstanceOf[DataStream[RecPack]]
@@ -249,14 +249,14 @@ object MysqlCDC2Hudi {
       val targetTable = targetArr(1)
       val targetHdfsPath = "%s/%s/%s".format(conf.getString("hudi.hdfsPath"), targetDB, targetTable)
 
-      val leadTbl = "%s_01.%s".format(targetArr(0), targetTable) // use 01 database schema
-      val flinkRowType = tableRowTypeMap(leadTbl)
+      val headTbl = "%s%s.%s".format(targetArr(0), dbPostfix.head, targetTable) // use 01 database schema
+      val flinkRowType = tableRowTypeMap(headTbl)
       val schema = Schema.newBuilder().fromFields(flinkRowType.getFieldNames,
         flinkRowType.getFields.asScala.map(_.getType).map(TypeConversions.fromLogicalToDataType).asJava).build
       val options = Map(
         FlinkOptions.PATH.key() -> targetHdfsPath,
         FlinkOptions.TABLE_TYPE.key() -> HoodieTableType.MERGE_ON_READ.name(),
-        FlinkOptions.PRECOMBINE_FIELD.key() -> tablePkMap(leadTbl).head,
+        FlinkOptions.PRECOMBINE_FIELD.key() -> tablePkMap(headTbl).head,
         FlinkOptions.OPERATION.key() -> WriteOperationType.UPSERT.value(),
 
         FlinkOptions.HIVE_SYNC_ENABLED.key() -> "true",
@@ -278,7 +278,7 @@ object MysqlCDC2Hudi {
       ).asJava
       val hudiBuilder = HoodiePipeline.builder("%s.%s".format(targetDB, targetTable))
         .schema(schema)
-        .pk(tablePkMap(leadTbl): _*)
+        .pk(tablePkMap(headTbl): _*)
         .partition(SET_SHARDING)
         .options(options)
       hudiBuilder.sink(srcByTag, false).uid("sink2Hudi")
