@@ -4,15 +4,13 @@ import com.ververica.cdc.debezium.table.{DeserializationRuntimeConverter, Deseri
 import org.apache.flink.table.api.DataTypes
 import org.apache.flink.table.data.GenericRowData
 import org.apache.flink.table.types.logical.{LogicalType, LogicalTypeRoot, RowType}
-import org.apache.kafka.connect.data.{Field, Schema, Struct}
-import tools.mysql.RowDataDeserializationRuntimeConverter
+import org.apache.kafka.connect.data.{Schema, Struct}
 
 import java.time.ZoneId
 import java.util.Optional
 import scala.collection.JavaConverters._
-import scala.util.control.Breaks.{break, breakable}
 
-class ShardDeserializationRuntimeConverterFactory(shardingKey: String, shardingVal: String) extends DeserializationRuntimeConverterFactory {
+class ShardDeserializationRuntimeConverterFactory(shardingVal: String) extends DeserializationRuntimeConverterFactory {
   override def createUserDefinedConverter(logicalType: LogicalType, zoneId: ZoneId): Optional[DeserializationRuntimeConverter] = {
     logicalType.getTypeRoot match {
       case LogicalTypeRoot.ROW =>
@@ -33,8 +31,8 @@ class ShardDeserializationRuntimeConverterFactory(shardingKey: String, shardingV
   }
 
   private def createRowConverter(rowType: RowType, serverTimeZone: ZoneId): DeserializationRuntimeConverter = {
-    var fieldNames = getFieldNames(rowType)
-    var fieldConverters = getFieldConverters(rowType, serverTimeZone)
+    val fieldNames = getFieldNames(rowType)
+    val fieldConverters = getFieldConverters(rowType, serverTimeZone)
 
     new DeserializationRuntimeConverter {
       override def convert(dbzObj: Any, schema: Schema): Object = {
@@ -61,11 +59,6 @@ class ShardDeserializationRuntimeConverterFactory(shardingKey: String, shardingV
         row
       }
     }
-  }
-
-  // todo
-  private def updateFields(): RowType = {
-    null
   }
 
   private def convertField(fieldConverter: DeserializationRuntimeConverter, fieldValue: Object, fieldSchema: Schema): AnyRef = {

@@ -32,8 +32,7 @@ import org.apache.hudi.util.HoodiePipeline
 import org.apache.kafka.connect.data.Struct
 import org.apache.kafka.connect.source.SourceRecord
 import org.slf4j.{Logger, LoggerFactory}
-import tools.mysql.ShardDeserializationRuntimeConverterFactory
-import tools.mysql.{MyDebeziumProps, RowDataDeserializationRuntimeConverter}
+import tools.mysql.{MyDebeziumProps, RowDataDeserializationRuntimeConverter, ShardDeserializationRuntimeConverterFactory}
 
 import java.time.ZoneId
 import scala.collection.JavaConverters._
@@ -102,13 +101,16 @@ object MysqlCDC2Hudi {
     val dbList = mutable.ArrayBuffer[String]()
     val tables = argsMap(SET_DB_TABLES) // db.table
     val tblList = tables.split(",")
-    val tblListWithPostfix = tables.split(",").flatMap(t => {
+    val tblListWithPostfix = tblList.flatMap(t => {
       val arr = t.split("\\.")
       if (arr.length == 2) {
         val db = arr(0)
         val tbl = arr(1)
-        dbPostfix.map(postfix => db + postfix + "." + tbl)
-        dbList += db
+        dbPostfix.map(postfix => {
+          val dbPostfix = db + postfix
+          dbList += dbPostfix
+          dbPostfix + "." + tbl
+        })
       } else throw new Exception("tables setting must be formatted like db.table")
     })
     val tblParals = mutable.Map[String, Int]()
@@ -138,7 +140,7 @@ object MysqlCDC2Hudi {
     val partition: MySqlPartition = new MySqlPartition(sourceConfig.getMySqlConnectorConfig.getLogicalName)
     val jdbc = DebeziumUtils.createMySqlConnection(sourceConfig)
     val tableSchemaMap = TableDiscoveryUtils.discoverSchemaForCapturedTables(partition, sourceConfig, jdbc).asScala
-    val tableRowTypeMap = mutable.Map[String, RowType]()
+    val tableRowMap = mutable.Map[String, (Seq[String], RowType)]()
     val tablePkMap = mutable.Map[String, Seq[String]]()
     tblListWithPostfix.foreach(x => {
       val arr = x.split("\\.")
@@ -146,11 +148,12 @@ object MysqlCDC2Hudi {
       // return RowType
       if (tableSchemaMap.contains(dbTable)) {
         val t = tableSchemaMap(dbTable).getTable
-        val colsDT = t.columns().asScala.map(x => MySqlTypeUtils.fromDbzColumn(x).getLogicalType)
-        colsDT += DataTypes.STRING().getLogicalType // partition column
-        val rowType: RowType = RowType.of(colsDT: _*)
+        val colsDT = t.columns().asScala.map(x => (x.name(), MySqlTypeUtils.fromDbzColumn(x).getLogicalType))
+        colsDT += ((SET_SHARDING, DataTypes.STRING().getLogicalType)) // partition column
+        val rowType = RowType.of(colsDT.map(_._2): _*)
+        val colNames = colsDT.map(_._1)
         // columns
-        tableRowTypeMap += (x -> rowType)
+        tableRowMap += (x -> (colNames, rowType))
         // primary key
         tablePkMap += (x -> t.primaryKeyColumnNames.asScala)
       } else throw new Exception("dbTable is not in tableSchemaMap")
@@ -188,19 +191,22 @@ object MysqlCDC2Hudi {
 
         override def getProducedType: TypeInformation[RecPack] = TypeInformation.of(classOf[RecPack])
       }).build()
-    val src = env.fromSource(mysqlSource, WatermarkStrategy.noWatermarks[RecPack](), "Mysql CDC Source").uid("src")
+    val src = env.fromSource(mysqlSource, WatermarkStrategy.noWatermarks[RecPack](), "Mysql CDC Source")
+      .setParallelism(1)
+      .uid("src")
 
     //// distribute and sink table
-    val mainStream = src.process(
-      (e: RecPack, ctx: ProcessFunction[RecPack, RecPack]#Context, _: Collector[RecPack]) => {
+    val tagMap = tblList.map(x => (x, new OutputTag[RecPack](x) {})).toMap
+    val mainStream = src.process(new ProcessFunction[RecPack, RecPack] {
+      override def processElement(e: RecPack, ctx: ProcessFunction[RecPack, RecPack]#Context, collector: Collector[RecPack]): Unit = {
         val regex = "_\\d+$".r
         val tagName = regex.replaceAllIn(e.db, "") + "." + e.table
-        val outTag = new OutputTag[java.io.Serializable](tagName)
-        ctx.output(outTag, e)
-      }).setParallelism(1).uid("output-tag")
+        if (tagMap.contains(tagName)) ctx.output(tagMap(tagName), e)
+      }
+    }).setParallelism(1).uid("output-tag")
 
-    tblList.map(tag => {
-      val srcByTag = mainStream.getSideOutput(new OutputTag[java.io.Serializable](tag)).asInstanceOf[DataStream[RecPack]]
+    tagMap.map { case (x, tag) =>
+      val srcByTag = mainStream.getSideOutput(tag).asInstanceOf[DataStream[RecPack]]
         .keyBy(new KeySelector[RecPack, Int] with ResultTypeQueryable[RecPack] {
           override def getKey(in: RecPack): Int = in.record.key().hashCode()
 
@@ -214,8 +220,8 @@ object MysqlCDC2Hudi {
           val opField = value.schema.field("op")
           if (opField != null) {
             val fullName = "%s.%s".format(e.db, e.table)
-            val conv = RowDataDeserializationRuntimeConverter.createConverter(checkNotNull(tableRowTypeMap(fullName)),
-              ZoneId.of(timeZone), new ShardDeserializationRuntimeConverterFactory(SET_SHARDING, sharding))
+            val conv = RowDataDeserializationRuntimeConverter.createConverter(checkNotNull(tableRowMap(fullName)._2),
+              ZoneId.of(timeZone), new ShardDeserializationRuntimeConverterFactory(sharding))
 
             val op = value.getString(opField.name)
             if (op == "c" || op == "r") {
@@ -241,18 +247,18 @@ object MysqlCDC2Hudi {
             LOG.error("with out op: " + value.toString)
           }
         }
-      }).setParallelism(tblParals.getOrElse(tag, 1)).uid("dist:" + tag)
+      }).setParallelism(tblParals.getOrElse(x, 1)).uid("dist:" + x)
 
       //// hudi sink
-      val targetArr = tag.split("\\.")
+      val targetArr = x.split("\\.")
       val targetDB = "hudi_%s".format(targetArr(0))
       val targetTable = targetArr(1)
       val targetHdfsPath = "%s/%s/%s".format(conf.getString("hudi.hdfsPath"), targetDB, targetTable)
 
       val headTbl = "%s%s.%s".format(targetArr(0), dbPostfix.head, targetTable) // use 01 database schema
-      val flinkRowType = tableRowTypeMap(headTbl)
-      val schema = Schema.newBuilder().fromFields(flinkRowType.getFieldNames,
-        flinkRowType.getFields.asScala.map(_.getType).map(TypeConversions.fromLogicalToDataType).asJava).build
+      val tblRow = tableRowMap(headTbl)
+      val schema = Schema.newBuilder().fromFields(tblRow._1.asJava,
+        tblRow._2.getFields.asScala.map(_.getType).map(TypeConversions.fromLogicalToDataType).asJava).build
       val options = Map(
         FlinkOptions.PATH.key() -> targetHdfsPath,
         FlinkOptions.TABLE_TYPE.key() -> HoodieTableType.MERGE_ON_READ.name(),
@@ -282,7 +288,7 @@ object MysqlCDC2Hudi {
         .partition(SET_SHARDING)
         .options(options)
       hudiBuilder.sink(srcByTag, false).uid("sink2Hudi")
-    })
+    }
 
     //// finish
     env.execute(getClass.getSimpleName.stripSuffix("$"))
