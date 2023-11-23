@@ -80,10 +80,9 @@ object HudiDemo {
     println("arrColPK: " + arrColPK.mkString(","))
 
     // kafka source
-    val topic = "cdctest"
     val kafkaSource = KafkaSource.builder[RowData]()
       .setBootstrapServers(KafkaUtils.getBrokerList)
-      .setTopics(topic)
+      .setTopics(MysqlCDCDemo.topic)
       .setGroupId("c_mysql_cdc_group")
       .setDeserializer(new KafkaRecordDeserializationSchema[RowData] {
         override def deserialize(consumerRecord: ConsumerRecord[Array[Byte], Array[Byte]], collector: Collector[RowData]): Unit = {

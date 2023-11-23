@@ -4,7 +4,6 @@ import com.alibaba.fastjson2.JSONObject
 import com.typesafe.config.ConfigFactory
 import com.ververica.cdc.connectors.mysql.source.MySqlSource
 import com.ververica.cdc.connectors.mysql.table.StartupOptions
-import com.ververica.cdc.debezium.JsonDebeziumDeserializationSchema
 import org.apache.flink.api.common.eventtime.WatermarkStrategy
 import org.apache.flink.connector.base.DeliveryGuarantee
 import org.apache.flink.connector.kafka.sink.{KafkaRecordSerializationSchema, KafkaSink}
@@ -27,6 +26,7 @@ import tools.mysql.JsonDeserializationSchema
  */
 object MysqlCDCDemo {
   //  val LOG: Logger = LoggerFactory.getLogger(getClass)
+  val topic = "cdctest"
 
   def main(args: Array[String]): Unit = {
     //    LOG.info("starting job")
@@ -65,22 +65,21 @@ object MysqlCDCDemo {
       .uid("src")
       .asInstanceOf[DataStream[JSONObject]]
 
-//    val topic = "cdctest"
-//    val sink = KafkaSink.builder()
-//      .setRecordSerializer(KafkaRecordSerializationSchema.builder()
-//        .setTopic(topic)
-//        .setPartitioner(new MyShardPartitioner)
-//        .setKeySerializationSchema(new MyKeySerializationSchema)
-//        .setValueSerializationSchema(new MyValueSerializationSchema)
-//        .build()
-//      )
-//      .setDeliveryGuarantee(DeliveryGuarantee.EXACTLY_ONCE)
-//      .setTransactionalIdPrefix(System.currentTimeMillis().toString)
-//      .setKafkaProducerConfig(KafkaUtils.getDefaultProp(false))
-//      .build()
+    val sink = KafkaSink.builder()
+      .setRecordSerializer(KafkaRecordSerializationSchema.builder()
+        .setTopic(topic)
+        .setPartitioner(new MyShardPartitioner)
+        .setKeySerializationSchema(new MyKeySerializationSchema)
+        .setValueSerializationSchema(new MyValueSerializationSchema)
+        .build()
+      )
+      .setDeliveryGuarantee(DeliveryGuarantee.EXACTLY_ONCE)
+      .setTransactionalIdPrefix(System.currentTimeMillis().toString)
+      .setKafkaProducerConfig(KafkaUtils.getDefaultProp(false))
+      .build()
 
-    src.print()
-//    src.sinkTo(sink).uid("sink")
+//    src.print()
+    src.sinkTo(sink).uid("sink")
 
     env.execute(getClass.getSimpleName.stripSuffix("$"))
   }
