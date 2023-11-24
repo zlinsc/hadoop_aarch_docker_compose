@@ -48,6 +48,18 @@ object MysqlCDC2Hudi {
   val SET_DB_TABLES = "dbTables"
   val SET_PARALLEL_PER_TABLE = "parallelPerTable"
 
+//  val jsonConverter: JsonConverter = getJsonConverter()
+//
+//  private def getJsonConverter() = {
+//    val jsonConverter = new JsonConverter()
+//    val configs: java.util.Map[String, Any] = Map(
+//      ConverterConfig.TYPE_CONFIG -> ConverterType.VALUE.getName,
+//      JsonConverterConfig.SCHEMAS_ENABLE_CONFIG -> false
+//    ).asJava
+//    jsonConverter.configure(configs)
+//    jsonConverter
+//  }
+
   def main(args: Array[String]): Unit = {
     //// flink config
     val conf = ConfigFactory.load("settings_online.conf")
@@ -160,7 +172,7 @@ object MysqlCDC2Hudi {
     })
 
     //// build source
-    case class RecPack(db: String, table: String, record: SourceRecord)
+    case class RecPack(tag: String, key: Int, row: RowData)
     val mysqlSource = MySqlSource.builder[RecPack]()
       .serverId(serverId)
       .hostname(host)
@@ -183,7 +195,47 @@ object MysqlCDC2Hudi {
           } else if (arr.length == 3) {
             val db = arr(1)
             val table = arr(2)
-            out.collect(RecPack(db, table, sourceRecord))
+            val regex = "_\\d+$".r
+            val tagName = regex.replaceAllIn(db, "") + "." + table
+
+            val keyHash = sourceRecord.key().hashCode()
+//            val bytes = MysqlCDC2Hudi.jsonConverter.fromConnectData(sourceRecord.topic(), sourceRecord.valueSchema(), sourceRecord.value())
+//            val schemaAndValue = MysqlCDC2Hudi.jsonConverter.toConnectData(sourceRecord.topic(), bytes)
+            val value = sourceRecord.value().asInstanceOf[Struct]
+            val valueSchema = sourceRecord.valueSchema()
+            val opField = value.schema.field("op")
+            if (opField != null) {
+              val fullName = "%s.%s".format(db, table)
+              val conv = RowDataDeserializationRuntimeConverter.createConverter(checkNotNull(tableRowMap(fullName)._2),
+                ZoneId.of(timeZone), new ShardDeserializationRuntimeConverterFactory(sharding))
+
+              val op = value.getString(opField.name)
+              if (op == "c" || op == "r") {
+                val after = value.getStruct(Envelope.FieldName.AFTER)
+                val afterSchema = valueSchema.field(Envelope.FieldName.AFTER).schema
+                val afterRowData = conv.convert(after, afterSchema).asInstanceOf[GenericRowData]
+                out.collect(RecPack(tagName, keyHash, afterRowData))
+              } else if (op == "d") {
+                val before = value.getStruct(Envelope.FieldName.BEFORE)
+                val beforeSchema = valueSchema.field(Envelope.FieldName.BEFORE).schema
+                val beforeRowData = conv.convert(before, beforeSchema).asInstanceOf[GenericRowData]
+                out.collect(RecPack(tagName, keyHash, beforeRowData))
+              } else if (op == "u") {
+                val before = value.getStruct(Envelope.FieldName.BEFORE)
+                val beforeSchema = valueSchema.field(Envelope.FieldName.BEFORE).schema
+                val beforeRowData = conv.convert(before, beforeSchema).asInstanceOf[GenericRowData]
+                out.collect(RecPack(tagName, keyHash, beforeRowData))
+
+                val after = value.getStruct(Envelope.FieldName.AFTER)
+                val afterSchema = valueSchema.field(Envelope.FieldName.AFTER).schema
+                val afterRowData = conv.convert(after, afterSchema).asInstanceOf[GenericRowData]
+                out.collect(RecPack(tagName, keyHash, afterRowData))
+              } else {
+                LOG.error("op %s is not support".format(op))
+              }
+            } else {
+              LOG.error("with out op: " + value.toString)
+            }
           } else {
             LOG.warn("without handler: " + sourceRecord.toString)
           }
@@ -192,60 +244,28 @@ object MysqlCDC2Hudi {
         override def getProducedType: TypeInformation[RecPack] = TypeInformation.of(classOf[RecPack])
       }).build()
     val src = env.fromSource(mysqlSource, WatermarkStrategy.noWatermarks[RecPack](), "Mysql CDC Source")
-      .setParallelism(1)
+      .setParallelism(4)
       .uid("src")
 
     //// distribute and sink table
     val tagMap = tblList.map(x => (x, new OutputTag[RecPack](x) {})).toMap
     val mainStream = src.process(new ProcessFunction[RecPack, RecPack] {
       override def processElement(e: RecPack, ctx: ProcessFunction[RecPack, RecPack]#Context, collector: Collector[RecPack]): Unit = {
-        val regex = "_\\d+$".r
-        val tagName = regex.replaceAllIn(e.db, "") + "." + e.table
-        if (tagMap.contains(tagName)) ctx.output(tagMap(tagName), e)
+        if (tagMap.contains(e.tag)) ctx.output(tagMap(e.tag), e)
       }
-    }).setParallelism(1).uid("output-tag")
+    }).setParallelism(4).uid("output-tag")
 
     tagMap.map { case (x, tag) =>
       val srcByTag = mainStream.getSideOutput(tag).asInstanceOf[DataStream[RecPack]]
         .keyBy(new KeySelector[RecPack, Int] with ResultTypeQueryable[RecPack] {
-          override def getKey(in: RecPack): Int = in.record.key().hashCode()
+          override def getKey(in: RecPack): Int = in.key
 
           override def getProducedType: TypeInformation[RecPack] = TypeInformation.of(classOf[RecPack])
         }).process(new KeyedProcessFunction[Int, RecPack, RowData] {
-        override def processElement(e: RecPack,
+        override def processElement(in: RecPack,
                                     ctx: KeyedProcessFunction[Int, RecPack, RowData]#Context,
                                     out: Collector[RowData]): Unit = {
-          val value = e.record.value().asInstanceOf[Struct]
-          val valueSchema = e.record.valueSchema
-          val opField = value.schema.field("op")
-          if (opField != null) {
-            val fullName = "%s.%s".format(e.db, e.table)
-            val conv = RowDataDeserializationRuntimeConverter.createConverter(checkNotNull(tableRowMap(fullName)._2),
-              ZoneId.of(timeZone), new ShardDeserializationRuntimeConverterFactory(sharding))
-
-            val op = value.getString(opField.name)
-            if (op == "c" || op == "r") {
-              val after = value.getStruct(Envelope.FieldName.AFTER)
-              val afterSchema = valueSchema.field(Envelope.FieldName.AFTER).schema
-              out.collect(conv.convert(after, afterSchema).asInstanceOf[GenericRowData])
-            } else if (op == "d") {
-              val before = value.getStruct(Envelope.FieldName.BEFORE)
-              val beforeSchema = valueSchema.field(Envelope.FieldName.BEFORE).schema
-              out.collect(conv.convert(before, beforeSchema).asInstanceOf[GenericRowData])
-            } else if (op == "u") {
-              val before = value.getStruct(Envelope.FieldName.BEFORE)
-              val beforeSchema = valueSchema.field(Envelope.FieldName.BEFORE).schema
-              out.collect(conv.convert(before, beforeSchema).asInstanceOf[GenericRowData])
-
-              val after = value.getStruct(Envelope.FieldName.AFTER)
-              val afterSchema = valueSchema.field(Envelope.FieldName.AFTER).schema
-              out.collect(conv.convert(after, afterSchema).asInstanceOf[GenericRowData])
-            } else {
-              LOG.error("op %s is not support".format(op))
-            }
-          } else {
-            LOG.error("with out op: " + value.toString)
-          }
+          out.collect(in.row)
         }
       }).setParallelism(tblParals.getOrElse(x, 1)).uid("dist:" + x)
 
