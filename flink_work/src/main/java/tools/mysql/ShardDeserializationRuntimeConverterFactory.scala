@@ -1,16 +1,18 @@
 package tools.mysql
 
 import com.ververica.cdc.debezium.table.{DeserializationRuntimeConverter, DeserializationRuntimeConverterFactory}
-import org.apache.flink.table.api.DataTypes
 import org.apache.flink.table.data.GenericRowData
 import org.apache.flink.table.types.logical.{LogicalType, LogicalTypeRoot, RowType}
 import org.apache.kafka.connect.data.{Schema, Struct}
+import org.slf4j.{Logger, LoggerFactory}
 
 import java.time.ZoneId
 import java.util.Optional
 import scala.collection.JavaConverters._
 
 class ShardDeserializationRuntimeConverterFactory(shardingVal: String) extends DeserializationRuntimeConverterFactory {
+  val LOG: Logger = LoggerFactory.getLogger(getClass)
+
   override def createUserDefinedConverter(logicalType: LogicalType, zoneId: ZoneId): Optional[DeserializationRuntimeConverter] = {
     logicalType.getTypeRoot match {
       case LogicalTypeRoot.ROW =>
@@ -31,31 +33,38 @@ class ShardDeserializationRuntimeConverterFactory(shardingVal: String) extends D
   }
 
   private def createRowConverter(rowType: RowType, serverTimeZone: ZoneId): DeserializationRuntimeConverter = {
-    val fieldNames = getFieldNames(rowType)
+    val arity = rowType.getFieldCount
     val fieldConverters = getFieldConverters(rowType, serverTimeZone)
 
     new DeserializationRuntimeConverter {
       override def convert(dbzObj: Any, schema: Schema): Object = {
         val struct = dbzObj.asInstanceOf[Struct]
-        val arity = fieldNames.length
-        val row: GenericRowData = new GenericRowData(arity + 1)
+        val fieldsList = schema.fields()
+        val fieldsListSize = fieldsList.size()
+        //        LOG.info("vvvvvvv=====fieldNames:" + fieldNames.mkString(";"))
+        //        LOG.info("vvvvvvvvv===schema:" + schema.fields().asScala.map(_.name()).mkString(";"))
+        //        LOG.info("vvvvvvvvvvv=struct:" + struct.schema().fields().asScala.map(_.name()).mkString(";"))
+        val row: GenericRowData = new GenericRowData(arity)
         for (i <- 0 until arity) {
-          val fieldName = fieldNames(i)
-          val field = schema.field(fieldName)
-          if (field == null) {
-            row.setField(i, null)
+          if (i >= fieldsListSize) {
+            var convertedField: Object = null
+            if (i == arity - 1) {
+              // sharding column
+              //              val conv = RowDataDeserializationRuntimeConverter.createConverter(
+              //                DataTypes.STRING().getLogicalType, serverTimeZone, DeserializationRuntimeConverterFactory.DEFAULT)
+              convertedField = convertField(fieldConverters(i), shardingVal, Schema.STRING_SCHEMA)
+            } else {
+              LOG.warn("column index %d is missing".format(i))
+              row.setField(i, convertedField)
+            }
           } else {
+            val fieldName = fieldsList.get(i).name()
             val fieldValue = struct.getWithoutDefault(fieldName)
             val fieldSchema = schema.field(fieldName).schema()
             val convertedField = convertField(fieldConverters(i), fieldValue, fieldSchema)
             row.setField(i, convertedField)
           }
         }
-        // partition
-        val conv = RowDataDeserializationRuntimeConverter.createConverter(
-          DataTypes.STRING().getLogicalType, serverTimeZone, DeserializationRuntimeConverterFactory.DEFAULT)
-        val convertedField = convertField(conv, shardingVal, Schema.STRING_SCHEMA)
-        row.setField(arity, convertedField)
         row
       }
     }

@@ -170,6 +170,7 @@ object MysqlCDC2Hudi {
         tablePkMap += (x -> t.primaryKeyColumnNames.asScala)
       } else throw new Exception("dbTable is not in tableSchemaMap")
     })
+    println(tableRowMap.mkString(";"))
 
     //// build source
     case class RecPack(tag: String, key: Int, row: RowData)

@@ -25,48 +25,50 @@ object RowDataDeserializationRuntimeConverter {
   def createNotNullConverter(`type`: LogicalType, serverTimeZone: ZoneId, userDefinedConverterFactory: DeserializationRuntimeConverterFactory): DeserializationRuntimeConverter = { // user defined converter has a higher resolve order
     val converter = userDefinedConverterFactory.createUserDefinedConverter(`type`, serverTimeZone)
     if (converter.isPresent) converter.get
-    // if no matched user defined converter, fallback to the default converter
-    `type`.getTypeRoot match {
-      case NULL =>
-        new DeserializationRuntimeConverter() {
-          override def convert(dbzObj: Any, schema: Schema): Object = null
-        }
-      case BOOLEAN =>
-        convertToBoolean
-      case TINYINT =>
-        new DeserializationRuntimeConverter() {
-          override def convert(dbzObj: Any, schema: Schema): Object = java.lang.Byte.parseByte(dbzObj.toString).asInstanceOf[Object]
-        }
-      case SMALLINT =>
-        new DeserializationRuntimeConverter() {
-          override def convert(dbzObj: Any, schema: Schema): Object = java.lang.Short.parseShort(dbzObj.toString).asInstanceOf[Object]
-        }
-      case INTEGER | INTERVAL_YEAR_MONTH =>
-        convertToInt
-      case BIGINT | INTERVAL_DAY_TIME =>
-        convertToLong
-      case DATE =>
-        convertToDate
-      case TIME_WITHOUT_TIME_ZONE =>
-        convertToTime
-      case TIMESTAMP_WITHOUT_TIME_ZONE =>
-        convertToTimestamp(serverTimeZone)
-      case TIMESTAMP_WITH_LOCAL_TIME_ZONE =>
-        convertToLocalTimeZoneTimestamp(serverTimeZone)
-      case FLOAT =>
-        convertToFloat
-      case DOUBLE =>
-        convertToDouble
-      case CHAR | VARCHAR =>
-        convertToString
-      case BINARY | VARBINARY =>
-        convertToBinary
-      case DECIMAL =>
-        createDecimalConverter(`type`.asInstanceOf[DecimalType])
-      case ROW =>
-        createRowConverter(`type`.asInstanceOf[RowType], serverTimeZone, userDefinedConverterFactory)
-      case ARRAY | MAP | MULTISET | RAW | _ =>
-        throw new UnsupportedOperationException("Unsupported type: " + `type`)
+    else {
+      // if no matched user defined converter, fallback to the default converter
+      `type`.getTypeRoot match {
+        case NULL =>
+          new DeserializationRuntimeConverter() {
+            override def convert(dbzObj: Any, schema: Schema): Object = null
+          }
+        case BOOLEAN =>
+          convertToBoolean
+        case TINYINT =>
+          new DeserializationRuntimeConverter() {
+            override def convert(dbzObj: Any, schema: Schema): Object = java.lang.Byte.parseByte(dbzObj.toString).asInstanceOf[Object]
+          }
+        case SMALLINT =>
+          new DeserializationRuntimeConverter() {
+            override def convert(dbzObj: Any, schema: Schema): Object = java.lang.Short.parseShort(dbzObj.toString).asInstanceOf[Object]
+          }
+        case INTEGER | INTERVAL_YEAR_MONTH =>
+          convertToInt
+        case BIGINT | INTERVAL_DAY_TIME =>
+          convertToLong
+        case DATE =>
+          convertToDate
+        case TIME_WITHOUT_TIME_ZONE =>
+          convertToTime
+        case TIMESTAMP_WITHOUT_TIME_ZONE =>
+          convertToTimestamp(serverTimeZone)
+        case TIMESTAMP_WITH_LOCAL_TIME_ZONE =>
+          convertToLocalTimeZoneTimestamp(serverTimeZone)
+        case FLOAT =>
+          convertToFloat
+        case DOUBLE =>
+          convertToDouble
+        case CHAR | VARCHAR =>
+          convertToString
+        case BINARY | VARBINARY =>
+          convertToBinary
+        case DECIMAL =>
+          createDecimalConverter(`type`.asInstanceOf[DecimalType])
+        case ROW =>
+          createRowConverter(`type`.asInstanceOf[RowType], serverTimeZone, userDefinedConverterFactory)
+        case ARRAY | MAP | MULTISET | RAW | _ =>
+          throw new UnsupportedOperationException("Unsupported type: " + `type`)
+      }
     }
   }
 

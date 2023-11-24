@@ -7,7 +7,7 @@ source /home/ads/cdc/killer.sh
 
 flink_bin_dir=/home/ads/cdc/flink-1.17.0/bin
 #kinit -kt /etc/security/keytabs/ads.keytab ads/exec-093.nm.ctdcp.com@BIGDATA.CHINATELECOM.CN
-kafka_kerberos_conf="-Dsecurity.kerberos.login.use-ticket-cache=true -Dsecurity.kerberos.login.contexts=Client,KafkaClient
+kafka_kerberos_conf="-Dsecurity.kerberos.login.use-ticket-cache=false -Dsecurity.kerberos.login.contexts=Client,KafkaClient
                      -Dsecurity.kerberos.login.principal=ads/hdp-tmp007.nm.ctdcp.com@BIGDATA.CHINATELECOM.CN
                      -Dsecurity.kerberos.login.keytab=/etc/security/keytabs/ads.keytab"
 flink_default_conf="-Dyarn.provided.lib.dirs=hdfs://ctyunns/user/ads/flink/lib

@@ -3,6 +3,7 @@ package tools.mysql
 import io.debezium.spi.converter.CustomConverter.{Converter, ConverterRegistration}
 import io.debezium.spi.converter.{CustomConverter, RelationalColumn}
 import org.apache.kafka.connect.data.SchemaBuilder
+import org.slf4j.{Logger, LoggerFactory}
 
 import java.sql.Timestamp
 import java.time._
@@ -10,7 +11,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Properties
 
 class MySqlDateTimeConverter extends CustomConverter[SchemaBuilder, RelationalColumn] {
-  //  private val LOG: Logger = LoggerFactory.getLogger(getClass)
+  private val LOG: Logger = LoggerFactory.getLogger(getClass)
 
   private val dateFormatter: DateTimeFormatter = DateTimeFormatter.ISO_DATE
   private val timeFormatter: DateTimeFormatter = DateTimeFormatter.ISO_TIME
@@ -25,21 +26,24 @@ class MySqlDateTimeConverter extends CustomConverter[SchemaBuilder, RelationalCo
     val sqlType: String = column.typeName().toUpperCase
     var schemaBuilder: SchemaBuilder = null
     var converter: Converter = null
-    if ("DATE".equals(sqlType)) {
-      schemaBuilder = SchemaBuilder.string.optional.name("com.darcytech.debezium.date.string")
-      converter = convertDate
-    }
-    if ("TIME".equals(sqlType)) {
-      schemaBuilder = SchemaBuilder.string.optional.name("com.darcytech.debezium.time.string")
-      converter = convertTime
-    }
-    if ("DATETIME".equals(sqlType)) {
-      schemaBuilder = SchemaBuilder.string.optional.name("com.darcytech.debezium.datetime.string")
-      converter = convertDateTime
-    }
-    if ("TIMESTAMP".equals(sqlType)) {
-      schemaBuilder = SchemaBuilder.string.optional.name("com.darcytech.debezium.timestamp.string")
-      converter = convertTimestamp
+    sqlType match {
+      case "DATE" =>
+        schemaBuilder = SchemaBuilder.string.optional.name("com.darcytech.debezium.date.string")
+        converter = convertDate
+
+      case "TIME" =>
+        schemaBuilder = SchemaBuilder.string.optional.name("com.darcytech.debezium.time.string")
+        converter = convertTime
+
+      case "DATETIME" =>
+        schemaBuilder = SchemaBuilder.string.optional.name("com.darcytech.debezium.datetime.string")
+        converter = convertDateTime
+
+      case "TIMESTAMP" =>
+        schemaBuilder = SchemaBuilder.string.optional.name("com.darcytech.debezium.timestamp.string")
+        converter = convertTimestamp
+
+      case _ =>
     }
     if (schemaBuilder != null) {
       registration.register(schemaBuilder, converter)
@@ -71,7 +75,7 @@ class MySqlDateTimeConverter extends CustomConverter[SchemaBuilder, RelationalCo
   private def convertDateTime(input: Any): String = {
     input match {
       case ts: Timestamp =>
-        timestampFormatter.format(ts.toLocalDateTime).replaceAll("T", " ")
+        timestampFormatter.format(ts.toLocalDateTime) + "Z"
       case dateTime: LocalDateTime =>
         datetimeFormatter.format(dateTime).replaceAll("T", " ")
       case _ =>
