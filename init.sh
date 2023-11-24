@@ -12,38 +12,38 @@ EOF
 }
 
 if [ "$(hostname)" = "master-node" ]; then
-    #flink
+    ###flink
     echo "taskmanager.host: $(hostname)" >> /home/flink/conf/flink-conf.yaml
     
-    #dfs
+    ###dfs
     authority "master-node"
     authority "slave-node"
     hdfs namenode -format
     /home/hadoop/sbin/start-dfs.sh
     echo -e '\n\nexport HADOOP_CLASSPATH=`hadoop classpath`\n' >> /root/.bashrc
 
-    #mysql
+    ###mysql
     # mysql -hmysql-node -uroot -proot -P3306 < init_mysql.sql
     # mysqlbinlog -hmysql-node -uroot -proot --read-from-remote-server binlog.000001 > /tmp/t.binlog
 
-    #kafka
+    ###kafka
     zookeeper-server-start.sh -daemon /home/kafka/config/zookeeper.properties
     kafka-server-start.sh -daemon /home/kafka/config/server.properties
     sleep 1s
     kafka-topics.sh --create --zookeeper localhost:2181 --topic cdctest --partitions 4 --replication-factor 1
 
 elif [ "$(hostname)" = "slave-node" ]; then
-    #flink
+    ###flink
     echo "taskmanager.host: $(hostname)" >> /home/flink/conf/flink-conf.yaml
 
-    #yarn
+    ###yarn
     authority 'master-node'
     authority 'slave-node'
     /home/hadoop/sbin/start-yarn.sh
     # $HADOOP_HOME/sbin/yarn-daemon.sh start nodemanager
     echo -e '\n\nexport HADOOP_CLASSPATH=`hadoop classpath`\n' >> /root/.bashrc
 
-    #hive
+    ###hive
     hadoop fs -mkdir -p /user/hive/warehouse
     hadoop fs -chmod g+w /user/hive/warehouse
     hadoop fs -mkdir /tmp
@@ -55,7 +55,7 @@ elif [ "$(hostname)" = "slave-node" ]; then
     nohup hive --service hiveserver2 &> /home/hive/log/hs2.log &
     # beeline -u jdbc:hive2://slave-node:10000 -n root
 
-    #flink
+    ###flink
     hadoop fs -mkdir -p hdfs://master-node:50070/tmp/checkpoints
     # export HADOOP_CLASSPATH=`hadoop classpath`
     # yarn-session.sh --detached -Dyarn.application.name=flinksql -Dclient.timeout=600s -Dparallelism.default=1 -Dtaskmanager.numberOfTaskSlots=1 \
@@ -66,16 +66,19 @@ elif [ "$(hostname)" = "slave-node" ]; then
     # nohup sql-gateway.sh start -Dsql-gateway.endpoint.rest.address=slave-node &> /home/flink/log/sql-gateway.log &
     # ./sql-client.sh gateway -e localhost:8083
 
+    ###spark-sql
+    hadoop fs -mkdir /jars && hadoop fs -put /home/spark/jars/* /jars/
+
     sleep 1s
 
 elif [ "$(hostname)" = "db-node" ]; then
 
-    #psql
+    ###psql
     pg_ctlcluster 12 main start
     su - postgres -c "psql -c \"ALTER USER postgres PASSWORD '123456'\""
     psql -h db-node -p 5432 -U postgres -f init_psql.sql
 
-    #mysql
+    ###mysql
     service mysql start
     mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql mysql
     mv /home/mysqld.cnf /etc/mysql/mysql.conf.d/mysqld.cnf

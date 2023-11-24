@@ -143,7 +143,7 @@ RUN mv antlr4-runtime-4.8.jar protobuf-java-3.11.4.jar fastjson2-2.0.39.jar \
 # -- pgsql cdc
 RUN mv debezium-connector-postgres-1.9.7.Final.cut.jar flink-connector-postgres-cdc-2.4.0.jar flink-sql-connector-postgres-cdc-2.4.0.cut.jar postgresql-42.5.1.jar /home/flink/lib/
 # -- mysql cdc
-RUN mv debezium-connector-mysql-1.9.7.Final.cut.jar flink-connector-mysql-cdc-2.4.0.jar flink-sql-connector-mysql-cdc-2.4.0.cut.jar HikariCP-4.0.3.jar mysql-binlog-connector-java-0.27.2.jar mysql-connector-j-8.0.31.jar /home/flink/lib/
+RUN mv debezium-connector-mysql-1.9.7.Final.cut.jar flink-connector-mysql-cdc-2.4.0.jar flink-sql-connector-mysql-cdc-2.4.0.jar HikariCP-4.0.3.jar mysql-binlog-connector-java-0.27.2.jar mysql-connector-j-8.0.31.jar /home/flink/lib/
 # -- hudi
 RUN mv hudi-flink1.17-bundle-mod-0.14.0.jar flink-table-common-1.17.0.jar flink-hadoop-compatibility_2.12-1.17.1.jar avro-1.11.1.jar javalin-4.6.7.jar kotlin-stdlib-1.5.32.jar hive-common-3.1.3.jar hadoop-mapreduce-client-core-3.3.1.jar commons-lang-2.6.jar hive-exec-3.1.3-mod.jar calcite-core-1.16.0.jar libfb303-0.9.3.jar /home/flink/lib/
 # -- other tools
@@ -155,7 +155,6 @@ RUN cp /home/flink/lib/hudi-flink1.17-bundle-mod-0.14.0.jar /home/hive/lib/
 
 # spark init for hudi
 RUN mv hudi-spark3.1.3-bundle_2.12-0.14.0.jar /home/spark/jars/
-RUN hadoop fs -mkdir /jars && hadoop fs -put /home/spark/jars/* /jars/
 WORKDIR /home
 
 # flink work jar

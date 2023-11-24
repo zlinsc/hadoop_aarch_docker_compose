@@ -17,8 +17,8 @@ if [ -n "$appid" ]; then
   yarn application -kill $appid
 fi
 flink run-application -t yarn-application -Dclient.timeout=600s -Dparallelism.default=1 -Dtaskmanager.numberOfTaskSlots=1 \
-        -Dtaskmanager.memory.process.size=1gb -Djobmanager.memory.process.size=1gb -Dtaskmanager.memory.managed.fraction=0.1 \
-        -Dyarn.application.name=cdc_demo -c demo.MysqlCDCDemo flink_work-1.1.jar
+  -Dtaskmanager.memory.process.size=1gb -Djobmanager.memory.process.size=1gb -Dtaskmanager.memory.managed.fraction=0.1 \
+  -Dyarn.application.name=cdc_demo -c demo.MysqlCDCDemo flink_work-1.2.jar
 
 hadoop fs -rm -r /tmp/cdc_order_hudi
 
@@ -26,9 +26,10 @@ appid=$(get_app_id "hudi_demo")
 if [ -n "$appid" ]; then
   yarn application -kill $appid
 fi
+# -Dclassloader.check-leaked-classloader=false \
 flink run-application -t yarn-application -Dclient.timeout=600s -Dparallelism.default=1 -Dtaskmanager.numberOfTaskSlots=1 \
-        -Dtaskmanager.memory.process.size=1gb -Djobmanager.memory.process.size=1gb -Dtaskmanager.memory.managed.fraction=0.1 -Dclassloader.check-leaked-classloader=false \
-        -Dyarn.application.name=hudi_demo -c demo.HudiDemo flink_work-1.1.jar
+  -Dtaskmanager.memory.process.size=1gb -Djobmanager.memory.process.size=1gb -Dtaskmanager.memory.managed.fraction=0.1 \
+  -Dyarn.application.name=hudi_demo -c demo.HudiDemo flink_work-1.2.jar
 
 # appid=$(get_app_id "flinksql")
 # if [ -n "$appid" ]; then
