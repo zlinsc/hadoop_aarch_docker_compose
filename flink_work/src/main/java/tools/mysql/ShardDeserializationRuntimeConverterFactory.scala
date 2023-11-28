@@ -49,14 +49,11 @@ class ShardDeserializationRuntimeConverterFactory(shardingVal: String) extends D
           if (i >= fieldsListSize) {
             var convertedField: Object = null
             if (i == arity - 1) {
-              // sharding column
-              //              val conv = RowDataDeserializationRuntimeConverter.createConverter(
-              //                DataTypes.STRING().getLogicalType, serverTimeZone, DeserializationRuntimeConverterFactory.DEFAULT)
               convertedField = convertField(fieldConverters(i), shardingVal, Schema.STRING_SCHEMA)
             } else {
               LOG.warn("column index %d is missing".format(i))
-              row.setField(i, convertedField)
             }
+            row.setField(i, convertedField)
           } else {
             val fieldName = fieldsList.get(i).name()
             val fieldValue = struct.getWithoutDefault(fieldName)

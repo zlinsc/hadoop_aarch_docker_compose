@@ -25,9 +25,15 @@ import org.apache.flink.table.types.logical.RowType
 import org.apache.flink.table.types.utils.TypeConversions
 import org.apache.flink.util.Preconditions.checkNotNull
 import org.apache.flink.util.{Collector, OutputTag}
-import org.apache.hudi.common.model.{HoodieTableType, WriteOperationType}
-import org.apache.hudi.config.{HoodieArchivalConfig, HoodieCleanConfig}
+import org.apache.hudi.client.transaction.BucketIndexConcurrentFileWritesConflictResolutionStrategy
+import org.apache.hudi.common.config.LockConfiguration
+import org.apache.hudi.common.model.{HoodieTableType, WriteConcurrencyMode, WriteOperationType}
+import org.apache.hudi.config.{HoodieArchivalConfig, HoodieCleanConfig, HoodieIndexConfig, HoodieLayoutConfig, HoodieLockConfig, HoodieWriteConfig}
 import org.apache.hudi.configuration.FlinkOptions
+import org.apache.hudi.hive.transaction.lock.HiveMetastoreBasedLockProvider
+import org.apache.hudi.index.HoodieIndex.BucketIndexEngineType
+import org.apache.hudi.index.HoodieIndex.IndexType.BUCKET
+import org.apache.hudi.table.storage.HoodieStorageLayout
 import org.apache.hudi.util.HoodiePipeline
 import org.apache.kafka.connect.data.Struct
 import org.apache.kafka.connect.source.SourceRecord
@@ -301,7 +307,22 @@ object MysqlCDC2Hudi {
         HoodieCleanConfig.CLEAN_MAX_COMMITS.key() -> "10",
         FlinkOptions.CLEAN_POLICY.key() -> "KEEP_LATEST_COMMITS",
         FlinkOptions.CLEAN_RETAIN_COMMITS.key() -> "10080",
-        HoodieArchivalConfig.ASYNC_ARCHIVE.key() -> "true"
+        HoodieArchivalConfig.ASYNC_ARCHIVE.key() -> "true",
+
+        HoodieIndexConfig.INDEX_TYPE.key() -> BUCKET.name,
+        HoodieIndexConfig.BUCKET_INDEX_ENGINE_TYPE.key() -> BucketIndexEngineType.SIMPLE.name(),
+        HoodieIndexConfig.BUCKET_INDEX_NUM_BUCKETS.key() -> "256",
+        HoodieLayoutConfig.LAYOUT_TYPE.key() -> HoodieStorageLayout.LayoutType.BUCKET.name,
+        HoodieLayoutConfig.LAYOUT_PARTITIONER_CLASS_NAME.key() -> HoodieLayoutConfig.SIMPLE_BUCKET_LAYOUT_PARTITIONER_CLASS_NAME,
+
+        HoodieWriteConfig.NUM_RETRIES_ON_CONFLICT_FAILURES.key() -> "3",
+        HoodieWriteConfig.WRITE_CONCURRENCY_MODE.key() -> "optimistic_concurrency_control",
+        HoodieCleanConfig.FAILED_WRITES_CLEANER_POLICY.key() -> "LAZY",
+        HoodieLockConfig.LOCK_PROVIDER_CLASS_NAME.key() -> classOf[HiveMetastoreBasedLockProvider].getName,
+        HoodieLockConfig.WRITE_CONFLICT_RESOLUTION_STRATEGY_CLASS_NAME.key() -> classOf[BucketIndexConcurrentFileWritesConflictResolutionStrategy].getName,
+        LockConfiguration.HIVE_DATABASE_NAME_PROP_KEY -> targetDB,
+        LockConfiguration.HIVE_TABLE_NAME_PROP_KEY -> targetTable,
+        LockConfiguration.HIVE_METASTORE_URI_PROP_KEY -> conf.getString("hudi.metastoreUris"),
       ).asJava
       val hudiBuilder = HoodiePipeline.builder("%s_%s".format(targetDB, targetTable))
         .schema(schema)
