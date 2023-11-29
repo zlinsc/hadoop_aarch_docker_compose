@@ -14,30 +14,28 @@ import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.functions.KeySelector
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable
 import org.apache.flink.contrib.streaming.state.EmbeddedRocksDBStateBackend
+import org.apache.flink.core.fs.Path
 import org.apache.flink.streaming.api.CheckpointingMode
 import org.apache.flink.streaming.api.datastream.DataStream
 import org.apache.flink.streaming.api.environment.CheckpointConfig.ExternalizedCheckpointCleanup
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.flink.streaming.api.functions.{KeyedProcessFunction, ProcessFunction}
-import org.apache.flink.table.api.{DataTypes, Schema}
+import org.apache.flink.table.api.Schema
 import org.apache.flink.table.data.{GenericRowData, RowData}
 import org.apache.flink.table.types.logical.RowType
 import org.apache.flink.table.types.utils.TypeConversions
 import org.apache.flink.util.Preconditions.checkNotNull
 import org.apache.flink.util.{Collector, OutputTag}
-import org.apache.hudi.client.transaction.BucketIndexConcurrentFileWritesConflictResolutionStrategy
-import org.apache.hudi.common.config.LockConfiguration
-import org.apache.hudi.common.model.{HoodieTableType, WriteConcurrencyMode, WriteOperationType}
-import org.apache.hudi.config.{HoodieArchivalConfig, HoodieCleanConfig, HoodieIndexConfig, HoodieLayoutConfig, HoodieLockConfig, HoodieWriteConfig}
+import org.apache.hudi.common.model.{HoodieTableType, WriteOperationType}
+import org.apache.hudi.config.{HoodieArchivalConfig, HoodieCleanConfig, HoodieIndexConfig, HoodieLayoutConfig}
 import org.apache.hudi.configuration.FlinkOptions
-import org.apache.hudi.hive.transaction.lock.HiveMetastoreBasedLockProvider
-import org.apache.hudi.index.HoodieIndex.BucketIndexEngineType
-import org.apache.hudi.index.HoodieIndex.IndexType.BUCKET
+import org.apache.hudi.index.HoodieIndex.{BucketIndexEngineType, IndexType}
 import org.apache.hudi.table.storage.HoodieStorageLayout
 import org.apache.hudi.util.HoodiePipeline
 import org.apache.kafka.connect.data.Struct
 import org.apache.kafka.connect.source.SourceRecord
 import org.slf4j.{Logger, LoggerFactory}
+import tools.hadoop.HadoopUtils
 import tools.mysql.{MyDebeziumProps, RowDataDeserializationRuntimeConverter, ShardDeserializationRuntimeConverterFactory}
 
 import java.time.ZoneId
@@ -48,34 +46,27 @@ object MysqlCDC2Hudi {
   val LOG: Logger = LoggerFactory.getLogger(getClass)
 
   val SET_STARTUP = "startup"
-  val SET_LABEL = "label"
+  val SET_DB_INSTANCE = "dbInstance"
   val SET_SERVER_ID = "serverId"
   val SET_SHARDING = "sharding"
   val SET_DB_TABLES = "dbTables"
   val SET_PARALLEL_PER_TABLE = "parallelPerTable"
+  val SET_BUCKETS = "buckets"
+  val SET_RECOVER = "recover"
 
-//  val jsonConverter: JsonConverter = getJsonConverter()
-//
-//  private def getJsonConverter() = {
-//    val jsonConverter = new JsonConverter()
-//    val configs: java.util.Map[String, Any] = Map(
-//      ConverterConfig.TYPE_CONFIG -> ConverterType.VALUE.getName,
-//      JsonConverterConfig.SCHEMAS_ENABLE_CONFIG -> false
-//    ).asJava
-//    jsonConverter.configure(configs)
-//    jsonConverter
-//  }
+  //  val jsonConverter: JsonConverter = getJsonConverter()
+  //
+  //  private def getJsonConverter() = {
+  //    val jsonConverter = new JsonConverter()
+  //    val configs: java.util.Map[String, Any] = Map(
+  //      ConverterConfig.TYPE_CONFIG -> ConverterType.VALUE.getName,
+  //      JsonConverterConfig.SCHEMAS_ENABLE_CONFIG -> false
+  //    ).asJava
+  //    jsonConverter.configure(configs)
+  //    jsonConverter
+  //  }
 
   def main(args: Array[String]): Unit = {
-    //// flink config
-    val conf = ConfigFactory.load("settings_online.conf")
-    val env = StreamExecutionEnvironment.getExecutionEnvironment()
-    env.enableCheckpointing(60000, CheckpointingMode.EXACTLY_ONCE)
-    env.setStateBackend(new EmbeddedRocksDBStateBackend(true))
-    val chCfg = env.getCheckpointConfig
-    chCfg.setCheckpointStorage(conf.getString("flink.checkpointDir"))
-    chCfg.setExternalizedCheckpointCleanup(ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION)
-
     //// extract argsMap
     println("args: " + args.mkString(";"))
     val argsMap = mutable.Map[String, String]()
@@ -84,6 +75,36 @@ object MysqlCDC2Hudi {
       if (arr.size == 2) argsMap += (arr(0) -> arr(1))
       else throw new Exception("args error: " + args.mkString(";"))
     })
+
+    //// flink config
+    val conf = ConfigFactory.load("settings_online.conf")
+    val env = StreamExecutionEnvironment.getExecutionEnvironment()
+    env.enableCheckpointing(60000, CheckpointingMode.EXACTLY_ONCE)
+    env.setStateBackend(new EmbeddedRocksDBStateBackend(true))
+    val chCfg = env.getCheckpointConfig
+    val ckpDir = conf.getString("flink.checkpointDir")
+    chCfg.setCheckpointStorage(ckpDir)
+    chCfg.setExternalizedCheckpointCleanup(ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION)
+
+    //// check whether app with same name is running
+    val jobParams = env.getConfig.getGlobalJobParameters.toMap
+    val appName = jobParams.get("yarn.application.name")
+    if (HadoopUtils.appIsRunningOrNot(appName)) throw new Exception("app of name %s is already running".format(appName))
+
+    //// savepoint recover
+    val jobIDCacheDir = conf.getString("flink.jobidCache")
+    val jobidPath = new Path(jobIDCacheDir + appName)
+    val fs = HadoopUtils.fileSys
+    if (!fs.exists(jobidPath)) fs.mkdirs(jobidPath)
+    if (argsMap(SET_RECOVER) == "y") {
+      if (fs.exists(jobidPath)) {
+        val lastJobID = HadoopUtils.getFileContent(jobidPath)
+        if (lastJobID.nonEmpty) {
+          val lastSavePath = HadoopUtils.getNewestFile(ckpDir + lastJobID)
+          env.setDefaultSavepointDirectory(lastSavePath)
+        }
+      }
+    }
 
     //// source config factory
     val startup = if (!argsMap.contains(SET_STARTUP)) {
@@ -105,11 +126,11 @@ object MysqlCDC2Hudi {
           throw new Exception("startup option is not support")
       }
     }
-    val rootName = argsMap(SET_LABEL)
+    val dbInstance = argsMap(SET_DB_INSTANCE)
     val serverId = argsMap(SET_SERVER_ID)
-    val username = conf.getString("%s.username".format(rootName))
-    val password = conf.getString("%s.password".format(rootName))
-    val group = conf.getConfigList("%s.instances".format(rootName)).asScala
+    val username = conf.getString("%s.username".format(dbInstance))
+    val password = conf.getString("%s.password".format(dbInstance))
+    val group = conf.getConfigList("%s.instances".format(dbInstance)).asScala
     val sharding = argsMap(SET_SHARDING)
     val g = group(sharding.toInt)
     val timeZone = "Asia/Shanghai"
@@ -153,6 +174,12 @@ object MysqlCDC2Hudi {
       .startupOptions(startup)
       .serverTimeZone(timeZone)
 
+    //// hudi bucket config
+    val buckets = argsMap(SET_BUCKETS).split(",")
+    if (buckets.length != tblList.length) throw new Exception("buckets list size is not equal to tables list")
+    val bucketMap = mutable.Map[String, Int]()
+    for (i <- 0 until tblList.size) bucketMap += (tblList(i) -> buckets(i).toInt)
+
     //// obtain table schema first time
     val sourceConfig = sourceConfigFactory.createConfig(0)
     val partition: MySqlPartition = new MySqlPartition(sourceConfig.getMySqlConnectorConfig.getLogicalName)
@@ -167,7 +194,7 @@ object MysqlCDC2Hudi {
       if (tableSchemaMap.contains(dbTable)) {
         val t = tableSchemaMap(dbTable).getTable
         val colsDT = t.columns().asScala.map(x => (x.name(), MySqlTypeUtils.fromDbzColumn(x).getLogicalType))
-        colsDT += ((SET_SHARDING, DataTypes.STRING().getLogicalType)) // partition column
+        //        colsDT += ((SET_SHARDING, DataTypes.STRING().getLogicalType)) // partition column
         val rowType = RowType.of(colsDT.map(_._2): _*)
         val colNames = colsDT.map(_._1)
         // columns
@@ -206,8 +233,8 @@ object MysqlCDC2Hudi {
             val tagName = regex.replaceAllIn(db, "") + "." + table
 
             val keyHash = sourceRecord.key().hashCode()
-//            val bytes = MysqlCDC2Hudi.jsonConverter.fromConnectData(sourceRecord.topic(), sourceRecord.valueSchema(), sourceRecord.value())
-//            val schemaAndValue = MysqlCDC2Hudi.jsonConverter.toConnectData(sourceRecord.topic(), bytes)
+            //            val bytes = MysqlCDC2Hudi.jsonConverter.fromConnectData(sourceRecord.topic(), sourceRecord.valueSchema(), sourceRecord.value())
+            //            val schemaAndValue = MysqlCDC2Hudi.jsonConverter.toConnectData(sourceRecord.topic(), bytes)
             val value = sourceRecord.value().asInstanceOf[Struct]
             val valueSchema = sourceRecord.valueSchema()
             val opField = value.schema.field("op")
@@ -279,10 +306,10 @@ object MysqlCDC2Hudi {
       //// hudi sink
       val targetArr = x.split("\\.")
       val targetDB = "hudi_%s".format(targetArr(0))
-      val targetTable = targetArr(1)
+      val targetTable = "%s_%s".format(targetArr(1), sharding)
       val targetHdfsPath = "%s/%s/%s".format(conf.getString("hudi.hdfsPath"), targetDB, targetTable)
 
-      val headTbl = "%s%s.%s".format(targetArr(0), dbPostfix.head, targetTable) // use 01 database schema
+      val headTbl = "%s%s.%s".format(targetArr(0), dbPostfix.head, targetArr(1)) // use first database schema
       val tblRow = tableRowMap(headTbl)
       val schema = Schema.newBuilder().fromFields(tblRow._1.asJava,
         tblRow._2.getFields.asScala.map(_.getType).map(TypeConversions.fromLogicalToDataType).asJava).build
@@ -309,30 +336,25 @@ object MysqlCDC2Hudi {
         FlinkOptions.CLEAN_RETAIN_COMMITS.key() -> "10080",
         HoodieArchivalConfig.ASYNC_ARCHIVE.key() -> "true",
 
-        HoodieIndexConfig.INDEX_TYPE.key() -> BUCKET.name,
+        HoodieIndexConfig.INDEX_TYPE.key() -> IndexType.BUCKET.name,
         HoodieIndexConfig.BUCKET_INDEX_ENGINE_TYPE.key() -> BucketIndexEngineType.SIMPLE.name(),
-        HoodieIndexConfig.BUCKET_INDEX_NUM_BUCKETS.key() -> "256",
+        HoodieIndexConfig.BUCKET_INDEX_NUM_BUCKETS.key() -> bucketMap(x).toString,
         HoodieLayoutConfig.LAYOUT_TYPE.key() -> HoodieStorageLayout.LayoutType.BUCKET.name,
         HoodieLayoutConfig.LAYOUT_PARTITIONER_CLASS_NAME.key() -> HoodieLayoutConfig.SIMPLE_BUCKET_LAYOUT_PARTITIONER_CLASS_NAME,
-
-        HoodieWriteConfig.NUM_RETRIES_ON_CONFLICT_FAILURES.key() -> "3",
-        HoodieWriteConfig.WRITE_CONCURRENCY_MODE.key() -> "optimistic_concurrency_control",
-        HoodieCleanConfig.FAILED_WRITES_CLEANER_POLICY.key() -> "LAZY",
-        HoodieLockConfig.LOCK_PROVIDER_CLASS_NAME.key() -> classOf[HiveMetastoreBasedLockProvider].getName,
-        HoodieLockConfig.WRITE_CONFLICT_RESOLUTION_STRATEGY_CLASS_NAME.key() -> classOf[BucketIndexConcurrentFileWritesConflictResolutionStrategy].getName,
-        LockConfiguration.HIVE_DATABASE_NAME_PROP_KEY -> targetDB,
-        LockConfiguration.HIVE_TABLE_NAME_PROP_KEY -> targetTable,
-        LockConfiguration.HIVE_METASTORE_URI_PROP_KEY -> conf.getString("hudi.metastoreUris"),
       ).asJava
       val hudiBuilder = HoodiePipeline.builder("%s_%s".format(targetDB, targetTable))
         .schema(schema)
         .pk(tablePkMap(headTbl): _*)
-        .partition(SET_SHARDING)
+        //        .partition(SET_SHARDING)
         .options(options)
       hudiBuilder.sink(srcByTag, false).uid("sink2Hudi:" + x)
     }
 
-    //// finish
+    //// execute
     env.execute(getClass.getSimpleName.stripSuffix("$"))
+
+    //// jobid cache overwrite
+    val jobID = env.getStreamGraph.getJobGraph.getJobID.toString
+    HadoopUtils.overwriteFileContent(jobidPath, jobID)
   }
 }

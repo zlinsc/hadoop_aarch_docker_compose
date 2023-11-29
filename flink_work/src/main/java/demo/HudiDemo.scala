@@ -19,6 +19,7 @@ import org.apache.hudi.common.config.LockConfiguration
 import org.apache.hudi.common.model.{HoodieTableType, WriteOperationType}
 import org.apache.hudi.config.{HoodieCleanConfig, HoodieIndexConfig, HoodieLayoutConfig, HoodieLockConfig, HoodieWriteConfig}
 import org.apache.hudi.configuration.FlinkOptions
+import org.apache.hudi.hive.transaction.lock.HiveMetastoreBasedLockProvider
 import org.apache.hudi.index.HoodieIndex.BucketIndexEngineType
 import org.apache.hudi.index.HoodieIndex.IndexType.BUCKET
 import org.apache.hudi.table.storage.HoodieStorageLayout
@@ -186,7 +187,7 @@ object HudiDemo {
       HoodieWriteConfig.NUM_RETRIES_ON_CONFLICT_FAILURES.key() -> "3",
       HoodieWriteConfig.WRITE_CONCURRENCY_MODE.key() -> "optimistic_concurrency_control",
       HoodieCleanConfig.FAILED_WRITES_CLEANER_POLICY.key() -> "LAZY",
-      HoodieLockConfig.LOCK_PROVIDER_CLASS_NAME.key() -> "org.apache.hudi.hive.transaction.lock.HiveMetastoreBasedLockProvider",
+      HoodieLockConfig.LOCK_PROVIDER_CLASS_NAME.key() -> classOf[HiveMetastoreBasedLockProvider].getName,
       HoodieLockConfig.WRITE_CONFLICT_RESOLUTION_STRATEGY_CLASS_NAME.key() -> classOf[BucketIndexConcurrentFileWritesConflictResolutionStrategy].getName,
       LockConfiguration.HIVE_DATABASE_NAME_PROP_KEY -> "hudi_db",
       LockConfiguration.HIVE_TABLE_NAME_PROP_KEY -> "cdc_order",
