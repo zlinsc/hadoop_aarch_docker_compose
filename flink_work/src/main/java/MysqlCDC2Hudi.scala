@@ -320,12 +320,12 @@ object MysqlCDC2Hudi {
         FlinkOptions.PRECOMBINE_FIELD.key() -> tablePkMap(headTbl).head,
         FlinkOptions.OPERATION.key() -> WriteOperationType.UPSERT.value(),
 
-        FlinkOptions.HIVE_SYNC_CONF_DIR.key() -> "/usr/local/hive/conf/",
         FlinkOptions.HIVE_SYNC_ENABLED.key() -> "true",
         FlinkOptions.HIVE_SYNC_DB.key() -> targetDB,
         FlinkOptions.HIVE_SYNC_TABLE.key() -> targetTable,
         FlinkOptions.HIVE_SYNC_MODE.key() -> "hms",
         FlinkOptions.HIVE_SYNC_METASTORE_URIS.key() -> conf.getString("hudi.metastoreUris"),
+        FlinkOptions.HIVE_SYNC_CONF_DIR.key() -> "/etc/hive/conf",
 
         FlinkOptions.COMPACTION_SCHEDULE_ENABLED.key() -> "true",
         FlinkOptions.COMPACTION_ASYNC_ENABLED.key() -> "false",
@@ -352,12 +352,12 @@ object MysqlCDC2Hudi {
       hudiBuilder.sink(srcByTag, false).uid("sink2Hudi:" + x)
     }
 
-    //// jobid cache overwrite
-    val jobID = env.getStreamGraph(false).getJobGraph.getJobID.toString
+    //// execute
+    val jobName = getClass.getSimpleName.stripSuffix("$") + "#" + dbInstance + "#sharding_" + sharding
+    val jobClient = env.executeAsync(jobName)
+    val jobID = jobClient.getJobID
     println("jobID=" + jobID)
     HadoopUtils.overwriteFileContent(jobidPath, jobID + "\n")
-
-    //// execute
-    env.execute(getClass.getSimpleName.stripSuffix("$") + "#" + dbInstance + "#sharding_" + sharding)
+    jobClient.getJobExecutionResult.get()
   }
 }

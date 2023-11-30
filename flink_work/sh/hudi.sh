@@ -12,8 +12,8 @@ function run() {
   -Djobmanager.memory.process.size=4gb -Dtaskmanager.numberOfTaskSlots=4 -Dparallelism.default=4 \
   -Dtaskmanager.memory.process.size=16gb -Dtaskmanager.memory.managed.fraction=0.4 \
   -c MysqlCDC2Hudi flink_work-1.2.jar dbInstance=mysql_crm serverId=5601-5604 sharding=$1 \
-  buckets=17,4 \
-  dbTables=cust.offer_price_plan_inst,cust.prod_spec_inst_rel
+  buckets=17,4,23 \
+  dbTables=cust.offer_price_plan_inst,cust.prod_spec_inst_rel,cust.prod_spec_inst
 }
 run 0
 run 1
