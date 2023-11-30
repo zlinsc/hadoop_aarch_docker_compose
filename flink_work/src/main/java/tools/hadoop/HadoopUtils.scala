@@ -15,7 +15,7 @@ import scala.util.control.Breaks.{break, breakable}
 
 object HadoopUtils {
   val yarnClient: YarnClient = YarnClient.createYarnClient()
-  val fileSys: FileSystem = FileSystem.get(new URI("/"))
+  val fileSys: FileSystem = FileSystem.get(new URI("hdfs://ctyunns/user/ads/"))
 
   def appIsRunningOrNot(appName: String): Boolean = {
     val configuration = new Configuration()
@@ -37,13 +37,17 @@ object HadoopUtils {
   }
 
   def getNewestFile(path: String): Path = {
-    fileSys.listStatus(new Path(path)).map(x => (x, x.getModificationTime)).maxBy(_._2)._1.getPath
+    val p = new Path(path)
+    if (fileSys.exists(p))
+      fileSys.listStatus(p).map(x => (x, x.getModificationTime)).maxBy(_._2)._1.getPath
+    else
+      null
   }
 
   def getFileContent(path: Path): String = {
     val input = fileSys.open(path)
     val reader = new BufferedReader(new InputStreamReader(input))
-    val line = reader.readLine()
+    val line = reader.readLine().trim
     input.close()
     line
   }

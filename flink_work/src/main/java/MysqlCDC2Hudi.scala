@@ -13,6 +13,7 @@ import org.apache.flink.api.common.eventtime.WatermarkStrategy
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.functions.KeySelector
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable
+import org.apache.flink.configuration.ConfigOptions
 import org.apache.flink.contrib.streaming.state.EmbeddedRocksDBStateBackend
 import org.apache.flink.core.fs.Path
 import org.apache.flink.streaming.api.CheckpointingMode
@@ -26,6 +27,7 @@ import org.apache.flink.table.types.logical.RowType
 import org.apache.flink.table.types.utils.TypeConversions
 import org.apache.flink.util.Preconditions.checkNotNull
 import org.apache.flink.util.{Collector, OutputTag}
+import org.apache.flink.yarn.configuration.YarnConfigOptions
 import org.apache.hudi.common.model.{HoodieTableType, WriteOperationType}
 import org.apache.hudi.config.{HoodieArchivalConfig, HoodieCleanConfig, HoodieIndexConfig, HoodieLayoutConfig}
 import org.apache.hudi.configuration.FlinkOptions
@@ -52,7 +54,6 @@ object MysqlCDC2Hudi {
   val SET_DB_TABLES = "dbTables"
   val SET_PARALLEL_PER_TABLE = "parallelPerTable"
   val SET_BUCKETS = "buckets"
-  val SET_RECOVER = "recover"
 
   //  val jsonConverter: JsonConverter = getJsonConverter()
   //
@@ -87,24 +88,24 @@ object MysqlCDC2Hudi {
     chCfg.setExternalizedCheckpointCleanup(ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION)
 
     //// check whether app with same name is running
-    val jobParams = env.getConfig.getGlobalJobParameters.toMap
-    val appName = jobParams.get("yarn.application.name")
+    val appName = env.getConfiguration.get[String](YarnConfigOptions.APPLICATION_NAME)
     if (HadoopUtils.appIsRunningOrNot(appName)) throw new Exception("app of name %s is already running".format(appName))
 
     //// savepoint recover
     val jobIDCacheDir = conf.getString("flink.jobidCache")
+    println(jobIDCacheDir + appName)
     val jobidPath = new Path(jobIDCacheDir + appName)
     val fs = HadoopUtils.fileSys
-    if (!fs.exists(jobidPath)) fs.mkdirs(jobidPath)
-    if (argsMap(SET_RECOVER) == "y") {
-      if (fs.exists(jobidPath)) {
-        val lastJobID = HadoopUtils.getFileContent(jobidPath)
-        if (lastJobID.nonEmpty) {
-          val lastSavePath = HadoopUtils.getNewestFile(ckpDir + lastJobID)
+    if (fs.exists(jobidPath)) {
+      val lastJobID = HadoopUtils.getFileContent(jobidPath)
+      if (lastJobID.nonEmpty) {
+        val lastSavePath = HadoopUtils.getNewestFile(ckpDir + lastJobID)
+        if (lastSavePath != null) {
           env.setDefaultSavepointDirectory(lastSavePath)
-        }
-      }
-    }
+          println("use savepoint: " + lastSavePath)
+        } else println("savepoint is not found on path: " + ckpDir + lastJobID)
+      } else println("cache file is empty")
+    } else println("first time to create this app with name " + appName)
 
     //// source config factory
     val startup = if (!argsMap.contains(SET_STARTUP)) {
@@ -319,6 +320,7 @@ object MysqlCDC2Hudi {
         FlinkOptions.PRECOMBINE_FIELD.key() -> tablePkMap(headTbl).head,
         FlinkOptions.OPERATION.key() -> WriteOperationType.UPSERT.value(),
 
+        FlinkOptions.HIVE_SYNC_CONF_DIR.key() -> "/usr/local/hive/conf/",
         FlinkOptions.HIVE_SYNC_ENABLED.key() -> "true",
         FlinkOptions.HIVE_SYNC_DB.key() -> targetDB,
         FlinkOptions.HIVE_SYNC_TABLE.key() -> targetTable,
@@ -350,11 +352,12 @@ object MysqlCDC2Hudi {
       hudiBuilder.sink(srcByTag, false).uid("sink2Hudi:" + x)
     }
 
-    //// execute
-    env.execute(getClass.getSimpleName.stripSuffix("$"))
-
     //// jobid cache overwrite
-    val jobID = env.getStreamGraph.getJobGraph.getJobID.toString
-    HadoopUtils.overwriteFileContent(jobidPath, jobID)
+    val jobID = env.getStreamGraph(false).getJobGraph.getJobID.toString
+    println("jobID=" + jobID)
+    HadoopUtils.overwriteFileContent(jobidPath, jobID + "\n")
+
+    //// execute
+    env.execute(getClass.getSimpleName.stripSuffix("$") + "#" + dbInstance + "#sharding_" + sharding)
   }
 }
