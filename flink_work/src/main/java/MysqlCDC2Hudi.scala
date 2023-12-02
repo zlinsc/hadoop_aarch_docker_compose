@@ -205,10 +205,10 @@ object MysqlCDC2Hudi {
         tableRowMap += (x -> (colNames, rowType))
         // primary key
         tablePkMap += (x -> t.primaryKeyColumnNames.asScala)
-      } else throw new Exception("dbTable is not in tableSchemaMap")
+      } else throw new Exception("%s is not in tableSchemaMap".format(dbTable))
     })
     println("pk=" + tablePkMap.mkString(";"))
-    println("cols=" + tableRowMap.mkString(";"))
+//    println("cols=" + tableRowMap.mkString(";"))
 
     //// build source
     case class RecPack(tag: String, key: Int, row: RowData)
@@ -361,7 +361,7 @@ object MysqlCDC2Hudi {
     val jobName = getClass.getSimpleName + appName
     val jobClient = env.executeAsync(jobName)
     val jobID = jobClient.getJobID
-    println("jobID=" + jobID)
+    println("/=" + jobID)
     HadoopUtils.overwriteFileContent(jobidPath, jobID + "\n")
     jobClient.getJobExecutionResult.get()
   }
