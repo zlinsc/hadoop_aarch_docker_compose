@@ -13,7 +13,7 @@ import org.apache.flink.api.common.eventtime.WatermarkStrategy
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.functions.KeySelector
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable
-import org.apache.flink.configuration.ConfigOptions
+import org.apache.flink.configuration.Configuration
 import org.apache.flink.contrib.streaming.state.EmbeddedRocksDBStateBackend
 import org.apache.flink.core.fs.Path
 import org.apache.flink.streaming.api.CheckpointingMode
@@ -27,7 +27,6 @@ import org.apache.flink.table.types.logical.RowType
 import org.apache.flink.table.types.utils.TypeConversions
 import org.apache.flink.util.Preconditions.checkNotNull
 import org.apache.flink.util.{Collector, OutputTag}
-import org.apache.flink.yarn.configuration.YarnConfigOptions
 import org.apache.hudi.common.model.{HoodieTableType, WriteOperationType}
 import org.apache.hudi.config.{HoodieArchivalConfig, HoodieCleanConfig, HoodieIndexConfig, HoodieLayoutConfig}
 import org.apache.hudi.configuration.FlinkOptions
@@ -54,6 +53,7 @@ object MysqlCDC2Hudi {
   val SET_DB_TABLES = "dbTables"
   val SET_PARALLEL_PER_TABLE = "parallelPerTable"
   val SET_BUCKETS = "buckets"
+  val SET_APP_NAME = "appName"
 
   //  val jsonConverter: JsonConverter = getJsonConverter()
   //
@@ -76,22 +76,17 @@ object MysqlCDC2Hudi {
       if (arr.size == 2) argsMap += (arr(0) -> arr(1))
       else throw new Exception("args error: " + args.mkString(";"))
     })
-
-    //// flink config
     val conf = ConfigFactory.load("settings_online.conf")
-    val env = StreamExecutionEnvironment.getExecutionEnvironment()
-    env.enableCheckpointing(60000, CheckpointingMode.EXACTLY_ONCE)
-    env.setStateBackend(new EmbeddedRocksDBStateBackend(true))
-    val chCfg = env.getCheckpointConfig
-    val ckpDir = conf.getString("flink.checkpointDir")
-    chCfg.setCheckpointStorage(ckpDir)
-    chCfg.setExternalizedCheckpointCleanup(ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION)
-
-    //// check whether app with same name is running
-    val appName = env.getConfiguration.get[String](YarnConfigOptions.APPLICATION_NAME)
-    if (HadoopUtils.appIsRunningOrNot(appName)) throw new Exception("app of name %s is already running".format(appName))
+    val dbInstance = argsMap(SET_DB_INSTANCE)
+    val sharding = argsMap(SET_SHARDING)
+    val appName = argsMap(SET_APP_NAME)
 
     //// savepoint recover
+    //    val appName = env.getConfiguration.get[String](YarnConfigOptions.APPLICATION_NAME)
+    if (HadoopUtils.appIsRunningOrNot(appName)) throw new Exception("app of name %s is already running".format(appName))
+
+    val configuration = new Configuration()
+    val ckpDir = conf.getString("flink.checkpointDir")
     val jobIDCacheDir = conf.getString("flink.jobidCache")
     println(jobIDCacheDir + appName)
     val jobidPath = new Path(jobIDCacheDir + appName)
@@ -101,11 +96,20 @@ object MysqlCDC2Hudi {
       if (lastJobID.nonEmpty) {
         val lastSavePath = HadoopUtils.getNewestFile(ckpDir + lastJobID)
         if (lastSavePath != null) {
-          env.setDefaultSavepointDirectory(lastSavePath)
+          configuration.setString("execution.savepoint.path", lastSavePath.toString)
+          //          env.setDefaultSavepointDirectory(lastSavePath)
           println("use savepoint: " + lastSavePath)
         } else println("savepoint is not found on path: " + ckpDir + lastJobID)
       } else println("cache file is empty")
     } else println("first time to create this app with name " + appName)
+
+    //// flink config
+    val env = StreamExecutionEnvironment.getExecutionEnvironment(configuration)
+    env.enableCheckpointing(60000, CheckpointingMode.EXACTLY_ONCE)
+    env.setStateBackend(new EmbeddedRocksDBStateBackend(true))
+    val chCfg = env.getCheckpointConfig
+    chCfg.setCheckpointStorage(ckpDir)
+    chCfg.setExternalizedCheckpointCleanup(ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION)
 
     //// source config factory
     val startup = if (!argsMap.contains(SET_STARTUP)) {
@@ -127,12 +131,10 @@ object MysqlCDC2Hudi {
           throw new Exception("startup option is not support")
       }
     }
-    val dbInstance = argsMap(SET_DB_INSTANCE)
     val serverId = argsMap(SET_SERVER_ID)
     val username = conf.getString("%s.username".format(dbInstance))
     val password = conf.getString("%s.password".format(dbInstance))
     val group = conf.getConfigList("%s.instances".format(dbInstance)).asScala
-    val sharding = argsMap(SET_SHARDING)
     val g = group(sharding.toInt)
     val timeZone = "Asia/Shanghai"
     val host = g.getString("hostname")
@@ -171,6 +173,7 @@ object MysqlCDC2Hudi {
       .password(password)
       .closeIdleReaders(false)
       .includeSchemaChanges(true)
+      .scanNewlyAddedTableEnabled(true)
       .debeziumProperties(MyDebeziumProps.getDebeziumProperties)
       .startupOptions(startup)
       .serverTimeZone(timeZone)
@@ -204,7 +207,8 @@ object MysqlCDC2Hudi {
         tablePkMap += (x -> t.primaryKeyColumnNames.asScala)
       } else throw new Exception("dbTable is not in tableSchemaMap")
     })
-    println(tableRowMap.mkString(";"))
+    println("pk=" + tablePkMap.mkString(";"))
+    println("cols=" + tableRowMap.mkString(";"))
 
     //// build source
     case class RecPack(tag: String, key: Int, row: RowData)
@@ -218,6 +222,7 @@ object MysqlCDC2Hudi {
       .password(password)
       .closeIdleReaders(false)
       .includeSchemaChanges(true)
+      .scanNewlyAddedTableEnabled(true)
       .debeziumProperties(MyDebeziumProps.getDebeziumProperties)
       .startupOptions(startup)
       .serverTimeZone(timeZone)
@@ -353,7 +358,7 @@ object MysqlCDC2Hudi {
     }
 
     //// execute
-    val jobName = getClass.getSimpleName.stripSuffix("$") + "#" + dbInstance + "#sharding_" + sharding
+    val jobName = getClass.getSimpleName + appName
     val jobClient = env.executeAsync(jobName)
     val jobID = jobClient.getJobID
     println("jobID=" + jobID)
