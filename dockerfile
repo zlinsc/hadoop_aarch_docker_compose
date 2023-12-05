@@ -44,7 +44,8 @@ ADD install/flink-1.17.0-bin-scala_2.12.tgz .
 # wget https://download.oracle.com/otn/java/jdk/8u361-b09/0ae14417abb444ebb02b9815e2103550/jdk-8u361-linux-aarch64.tar.gz
 ADD install/jdk-8u361-linux-aarch64.tar.gz .
 ADD install/kafka_2.11-2.0.1.tgz .
-ADD install/spark-3.1.3-bin-hadoop3.2.tgz .
+# ADD install/spark-3.1.3-bin-hadoop3.2.tgz .
+ADD install/spark-3.2.1-bin-hadoop3.2.tgz .
 
 RUN mv jdk* jdk && \
     mv hadoop* hadoop && \
@@ -154,7 +155,8 @@ RUN mv hudi-hadoop-mr-bundle-0.14.0.jar hudi-hive-sync-bundle-0.14.0.jar /home/h
 RUN cp /home/flink/lib/hudi-flink1.17-bundle-mod-0.14.0.jar /home/hive/lib/
 
 # spark init for hudi
-RUN mv hudi-spark3.1.3-bundle_2.12-0.14.0.jar /home/spark/jars/
+# RUN mv hudi-spark3.1.3-bundle_2.12-0.14.0.jar /home/spark/jars/
+RUN mv hudi-spark3.2.1-bundle_2.12-0.14.0.jar /home/spark/jars/
 WORKDIR /home
 
 # flink work jar

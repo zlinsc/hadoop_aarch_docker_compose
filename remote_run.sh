@@ -39,3 +39,9 @@ flink run-application -t yarn-application -Dclient.timeout=600s -Dparallelism.de
 #     -Dparallelism.default=1 -Dtaskmanager.numberOfTaskSlots=1 -Dtaskmanager.memory.process.size=1gb \
 #     -Djobmanager.memory.process.size=1gb -Dtaskmanager.memory.managed.fraction=0.1
 # sql-client.sh embedded -i /home/init_flink.sql -s yarn-session
+
+# spark-sql \
+# --conf 'spark.serializer=org.apache.spark.serializer.KryoSerializer' \
+# --conf 'spark.sql.catalog.spark_catalog=org.apache.spark.sql.hudi.catalog.HoodieCatalog' \
+# --conf 'spark.sql.extensions=org.apache.spark.sql.hudi.HoodieSparkSessionExtension' \
+# --conf 'spark.sql.legacy.parquet.datetimeRebaseModeInRead=CORRECTED' 
