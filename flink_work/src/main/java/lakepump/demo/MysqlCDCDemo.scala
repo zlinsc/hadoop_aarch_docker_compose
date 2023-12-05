@@ -1,4 +1,4 @@
-package demo
+package lakepump.demo
 
 import com.alibaba.fastjson2.JSONObject
 import com.typesafe.config.ConfigFactory
@@ -12,8 +12,8 @@ import org.apache.flink.streaming.api.CheckpointingMode
 import org.apache.flink.streaming.api.datastream.DataStream
 import org.apache.flink.streaming.api.environment.CheckpointConfig.ExternalizedCheckpointCleanup
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
-import tools.kafka.{KafkaUtils, MyKeySerializationSchema, MyShardPartitioner, MyValueSerializationSchema}
-import tools.mysql.JsonDeserializationSchema
+import lakepump.kafka.{KafkaUtils, MyKeySerializationSchema, MyShardPartitioner, MyValueSerializationSchema}
+import lakepump.mysql.JsonDeserializationSchema
 
 /**
  * ## start app in yarn

@@ -1,4 +1,4 @@
-package tools.mysql
+package lakepump.mysql
 
 import io.debezium.spi.converter.CustomConverter.{Converter, ConverterRegistration}
 import io.debezium.spi.converter.{CustomConverter, RelationalColumn}

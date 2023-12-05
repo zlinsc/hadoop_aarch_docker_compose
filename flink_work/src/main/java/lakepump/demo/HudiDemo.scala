@@ -1,4 +1,4 @@
-package demo
+package lakepump.demo
 
 import com.alibaba.fastjson2.JSONObject
 import com.typesafe.config.ConfigFactory
@@ -25,8 +25,8 @@ import org.apache.hudi.index.HoodieIndex.IndexType.BUCKET
 import org.apache.hudi.table.storage.HoodieStorageLayout
 import org.apache.hudi.util.HoodiePipeline
 import org.apache.kafka.clients.consumer.ConsumerRecord
-import tools.flink.RowUtils
-import tools.kafka.KafkaUtils
+import lakepump.cdc.RowUtils
+import lakepump.kafka.KafkaUtils
 
 import java.sql.{Connection, DriverManager, ResultSet}
 import scala.collection.JavaConverters._

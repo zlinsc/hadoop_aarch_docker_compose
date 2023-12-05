@@ -1,4 +1,4 @@
-package tools.mysql
+package lakepump.mysql
 
 import com.alibaba.fastjson2.JSONObject
 import com.ververica.cdc.debezium.DebeziumDeserializationSchema

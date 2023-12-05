@@ -1,6 +1,7 @@
-import com.typesafe.config.ConfigFactory
+package lakepump.cdc
+
+import lakepump.kafka.{KafkaUtils, MyDeserializationSchema}
 import org.apache.flink.api.common.eventtime.WatermarkStrategy
-import org.apache.flink.api.common.serialization.SimpleStringSchema
 import org.apache.flink.api.common.state.{MapState, MapStateDescriptor}
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.functions.KeySelector
@@ -8,14 +9,10 @@ import org.apache.flink.api.java.typeutils.ResultTypeQueryable
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.connector.kafka.source.KafkaSource
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer
-import org.apache.flink.contrib.streaming.state.EmbeddedRocksDBStateBackend
-import org.apache.flink.streaming.api.CheckpointingMode
-import org.apache.flink.streaming.api.environment.CheckpointConfig.ExternalizedCheckpointCleanup
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction
 import org.apache.flink.util.Collector
 import org.slf4j.{Logger, LoggerFactory}
-import tools.kafka.{KafkaUtils, MyDeserializationSchema}
 
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDateTime, ZoneOffset}
@@ -37,7 +34,7 @@ object TestCDCConsumer {
 
     override def processElement(i: (String, String), ctx: KeyedProcessFunction[String, (String, String), String]#Context, collector: Collector[String]): Unit = {
       LOG.info("xxxxxxxx===:" + i._1 + "," + i._2)
-//      Thread.sleep(10000)
+      //      Thread.sleep(10000)
       //      if (cntCache.contains(i._1)) {
       ////        LOG.error("xxxxxxxx===:"+i._1+","+cntCache.get(i._1))
       //        if (!cntCache.get(i._1)) {
@@ -94,13 +91,13 @@ object TestCDCConsumer {
     val arr = args(0).split('.')
     val (db, table) = (arr(0), arr(1).toUpperCase)
     printf("CDC DB: %s, TABLE: %s\n", db, table)
-//    val conf = ConfigFactory.load("app_online.conf")
+    //    val conf = ConfigFactory.load("app_online.conf")
     val env = StreamExecutionEnvironment.getExecutionEnvironment()
-//    env.enableCheckpointing(60000, CheckpointingMode.EXACTLY_ONCE)
-//    env.setStateBackend(new EmbeddedRocksDBStateBackend(true))
-//    val chCfg = env.getCheckpointConfig
-//    chCfg.setCheckpointStorage(conf.getString("flink.checkpointDir"))
-//    chCfg.setExternalizedCheckpointCleanup(ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION)
+    //    env.enableCheckpointing(60000, CheckpointingMode.EXACTLY_ONCE)
+    //    env.setStateBackend(new EmbeddedRocksDBStateBackend(true))
+    //    val chCfg = env.getCheckpointConfig
+    //    chCfg.setCheckpointStorage(conf.getString("flink.checkpointDir"))
+    //    chCfg.setExternalizedCheckpointCleanup(ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION)
 
     // source def
     var offset = OffsetsInitializer.committedOffsets()
@@ -113,12 +110,12 @@ object TestCDCConsumer {
     }
     val kafkaSource = KafkaSource.builder[String]()
       .setBootstrapServers(KafkaUtils.getBrokerList)
-//            .setTopics(conf.getString("kafka.topicTest"))
+      //            .setTopics(conf.getString("kafka.topicTest"))
       .setTopics(args(2))
       .setGroupId("c_mysql_cdc_group")
       .setStartingOffsets(offset)
       .setDeserializer(new MyDeserializationSchema)
-//                  .setValueOnlyDeserializer(new SimpleStringSchema())
+      //                  .setValueOnlyDeserializer(new SimpleStringSchema())
       .setProperties(KafkaUtils.getDefaultProp(true))
       .build()
 
@@ -151,10 +148,10 @@ object TestCDCConsumer {
       (key, rec)
     }).returns(TypeInformation.of(classOf[(String, String)]))
       //      .filter(x => x._1 == "{\"UID\":227548715}")
-//      .filter(x => uids.contains(x._1))
+      //      .filter(x => uids.contains(x._1))
       //      .filter(x => x._2 == table)
-            .keyBy(new RowKeySelector)
-            .process(new MyProcessFunc)
+      .keyBy(new RowKeySelector)
+      .process(new MyProcessFunc)
       .setParallelism(1)
 
     env.execute(getClass.getSimpleName.stripSuffix("$"))

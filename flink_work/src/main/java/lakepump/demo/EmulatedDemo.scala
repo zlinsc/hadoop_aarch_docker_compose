@@ -1,4 +1,4 @@
-package demo
+package lakepump.demo
 
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 

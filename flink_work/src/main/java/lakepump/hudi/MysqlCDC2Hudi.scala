@@ -1,3 +1,5 @@
+package lakepump.hudi
+
 import com.typesafe.config.ConfigFactory
 import com.ververica.cdc.connectors.mysql.debezium.DebeziumUtils
 import com.ververica.cdc.connectors.mysql.schema.MySqlTypeUtils
@@ -9,6 +11,8 @@ import com.ververica.cdc.debezium.DebeziumDeserializationSchema
 import io.debezium.connector.mysql.MySqlPartition
 import io.debezium.data.Envelope
 import io.debezium.relational.TableId
+import lakepump.hadoop.HadoopUtils
+import lakepump.mysql.{MyDebeziumProps, RowDataDeserializationRuntimeConverter, ShardDeserializationRuntimeConverterFactory}
 import org.apache.flink.api.common.eventtime.WatermarkStrategy
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.functions.KeySelector
@@ -36,8 +40,6 @@ import org.apache.hudi.util.HoodiePipeline
 import org.apache.kafka.connect.data.Struct
 import org.apache.kafka.connect.source.SourceRecord
 import org.slf4j.{Logger, LoggerFactory}
-import tools.hadoop.HadoopUtils
-import tools.mysql.{MyDebeziumProps, RowDataDeserializationRuntimeConverter, ShardDeserializationRuntimeConverterFactory}
 
 import java.time.ZoneId
 import scala.collection.JavaConverters._
@@ -51,7 +53,7 @@ object MysqlCDC2Hudi {
   val SET_SERVER_ID = "serverId"
   val SET_SHARDING = "sharding"
   val SET_DB_TABLES = "dbTables"
-  val SET_PARALLEL_PER_TABLE = "parallelPerTable"
+  //  val SET_PARALLEL_PER_TABLE = "parallelPerTable"
   val SET_BUCKETS = "buckets"
   val SET_APP_NAME = "appName"
 
@@ -155,13 +157,13 @@ object MysqlCDC2Hudi {
         })
       } else throw new Exception("tables setting must be formatted like db.table")
     })
-    val tblParals = mutable.Map[String, Int]()
-    if (argsMap.contains(SET_PARALLEL_PER_TABLE)) {
-      val tablesParallelismArr = argsMap(SET_PARALLEL_PER_TABLE).split("\\.")
-      if (tablesParallelismArr.length == tblList.length)
-        tablesParallelismArr.zipWithIndex.foreach(x => tblParals += (tblList(x._2) -> x._1.toInt))
-      else throw new Exception("table parallelism configs is not the same as given table num")
-    } else tblList.foreach(x => tblParals += (x -> 1))
+    //    val tblParals = mutable.Map[String, Int]()
+    //    if (argsMap.contains(SET_PARALLEL_PER_TABLE)) {
+    //      val tablesParallelismArr = argsMap(SET_PARALLEL_PER_TABLE).split("\\.")
+    //      if (tablesParallelismArr.length == tblList.length)
+    //        tablesParallelismArr.zipWithIndex.foreach(x => tblParals += (tblList(x._2) -> x._1.toInt))
+    //      else throw new Exception("table parallelism configs is not the same as given table num")
+    //    } else tblList.foreach(x => tblParals += (x -> 1))
 
     val sourceConfigFactory = new MySqlSourceConfigFactory()
       .serverId(serverId)
@@ -208,7 +210,7 @@ object MysqlCDC2Hudi {
       } else throw new Exception("%s is not in tableSchemaMap".format(dbTable))
     })
     println("pk=" + tablePkMap.mkString(";"))
-//    println("cols=" + tableRowMap.mkString(";"))
+    //    println("cols=" + tableRowMap.mkString(";"))
 
     //// build source
     case class RecPack(tag: String, key: Int, row: RowData)
@@ -283,9 +285,9 @@ object MysqlCDC2Hudi {
 
         override def getProducedType: TypeInformation[RecPack] = TypeInformation.of(classOf[RecPack])
       }).build()
+    val rootParallel = 4
     val src = env.fromSource(mysqlSource, WatermarkStrategy.noWatermarks[RecPack](), "Mysql CDC Source")
-      .setParallelism(4)
-      .uid("src")
+      .setParallelism(rootParallel).uid("src")
 
     //// distribute and sink table
     val tagMap = tblList.map(x => (x, new OutputTag[RecPack](x) {})).toMap
@@ -293,9 +295,11 @@ object MysqlCDC2Hudi {
       override def processElement(e: RecPack, ctx: ProcessFunction[RecPack, RecPack]#Context, collector: Collector[RecPack]): Unit = {
         if (tagMap.contains(e.tag)) ctx.output(tagMap(e.tag), e)
       }
-    }).setParallelism(4).uid("output-tag")
+    }).setParallelism(rootParallel).uid("output-tag")
 
     tagMap.map { case (x, tag) =>
+      val bucketParallel = Math.min(bucketMap(x), 16)
+
       val srcByTag = mainStream.getSideOutput(tag).asInstanceOf[DataStream[RecPack]]
         .keyBy(new KeySelector[RecPack, Int] with ResultTypeQueryable[RecPack] {
           override def getKey(in: RecPack): Int = in.key
@@ -307,7 +311,7 @@ object MysqlCDC2Hudi {
                                     out: Collector[RowData]): Unit = {
           out.collect(in.row)
         }
-      }).setParallelism(tblParals.getOrElse(x, 1)).uid("dist:" + x)
+      }).setParallelism(bucketParallel).uid("dist:" + x)
 
       //// hudi sink
       val targetArr = x.split("\\.")
@@ -348,6 +352,9 @@ object MysqlCDC2Hudi {
         HoodieIndexConfig.BUCKET_INDEX_NUM_BUCKETS.key() -> bucketMap(x).toString,
         HoodieLayoutConfig.LAYOUT_TYPE.key() -> HoodieStorageLayout.LayoutType.BUCKET.name,
         HoodieLayoutConfig.LAYOUT_PARTITIONER_CLASS_NAME.key() -> HoodieLayoutConfig.SIMPLE_BUCKET_LAYOUT_PARTITIONER_CLASS_NAME,
+
+        FlinkOptions.WRITE_TASKS.key() -> bucketParallel.toString,
+        FlinkOptions.BUCKET_ASSIGN_TASKS.key() -> bucketParallel.toString,
       ).asJava
       val hudiBuilder = HoodiePipeline.builder("%s_%s".format(targetDB, targetTable))
         .schema(schema)

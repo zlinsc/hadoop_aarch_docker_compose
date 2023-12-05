@@ -1,4 +1,4 @@
-package tools.mysql
+package lakepump.mysql
 
 import java.util.Properties
 

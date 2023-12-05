@@ -1,4 +1,4 @@
-package demo
+package lakepump.demo
 
 import com.typesafe.config.ConfigFactory
 import com.ververica.cdc.connectors.postgres.PostgreSQLSource

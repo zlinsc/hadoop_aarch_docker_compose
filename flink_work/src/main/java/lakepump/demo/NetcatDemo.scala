@@ -1,4 +1,4 @@
-package demo
+package lakepump.demo
 
 import org.apache.flink.api.common.RuntimeExecutionMode
 import org.apache.flink.api.common.functions.FlatMapFunction

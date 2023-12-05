@@ -1,4 +1,4 @@
-package tools.kafka
+package lakepump.kafka
 
 import com.alibaba.fastjson2.JSONObject
 import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkKafkaPartitioner

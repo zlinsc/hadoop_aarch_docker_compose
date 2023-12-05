@@ -1,4 +1,4 @@
-package tools.flink
+package lakepump.cdc
 
 import com.ververica.cdc.connectors.mysql.source.split.{MySqlBinlogSplit, MySqlSnapshotSplit, MySqlSplitSerializer}
 import org.apache.flink.api.common.typeinfo.TypeInformation

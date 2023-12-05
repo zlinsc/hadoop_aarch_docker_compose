@@ -1,4 +1,4 @@
-package tools.kafka
+package lakepump.kafka
 
 import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment

@@ -1,8 +1,5 @@
-package tools.flink
+package lakepump.cdc
 
-import com.alibaba.fastjson2.JSONObject
-import com.ververica.cdc.connectors.mysql.schema.MySqlTypeUtils
-import io.debezium.relational.Column
 import org.apache.flink.table.api.DataTypes
 import org.apache.flink.table.data.{DecimalData, StringData}
 import org.apache.flink.table.types.DataType

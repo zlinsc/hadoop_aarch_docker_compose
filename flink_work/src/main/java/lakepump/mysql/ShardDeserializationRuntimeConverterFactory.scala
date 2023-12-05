@@ -1,4 +1,4 @@
-package tools.mysql
+package lakepump.mysql
 
 import com.ververica.cdc.debezium.table.{DeserializationRuntimeConverter, DeserializationRuntimeConverterFactory}
 import org.apache.flink.table.data.GenericRowData

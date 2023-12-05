@@ -1,4 +1,4 @@
-package tools.mysql
+package lakepump.mysql
 
 import com.ververica.cdc.connectors.shaded.org.apache.kafka.connect.data.Struct
 import com.ververica.cdc.debezium.table._

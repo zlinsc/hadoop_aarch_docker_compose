@@ -1,4 +1,4 @@
-package tools.hadoop
+package lakepump.hadoop
 
 import org.apache.flink.configuration.ConfigConstants
 import org.apache.flink.core.fs.FileSystem.WriteMode
