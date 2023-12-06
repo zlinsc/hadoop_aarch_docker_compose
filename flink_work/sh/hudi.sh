@@ -40,7 +40,7 @@ function compact() {
   -Dsecurity.kerberos.login.keytab=/etc/security/keytabs/ads.keytab \
   -Dclient.timeout=600s -Dtaskmanager.slot.timeout=300s -Dakka.ask.timeout=300s \
   -Dyarn.application.name=compact_hudi_tables -Dyarn.application.queue=ads \
-  -Djobmanager.memory.process.size=8gb -Dtaskmanager.numberOfTaskSlots=4 -Dparallelism.default=4 \
+  -Djobmanager.memory.process.size=4gb -Dtaskmanager.numberOfTaskSlots=16 -Dparallelism.default=4 \
   -Dtaskmanager.memory.process.size=16gb -Dtaskmanager.memory.managed.fraction=0.1 -Dtaskmanager.memory.network.fraction=0.1 \
   -c lakepump.hudi.TimingCompactor flink_work-1.3.jar \
   dbTables=cust.prod_spec_inst_rel,cust.prod_spec_inst,cust.prod_spec_inst_attr,cust.prod_spec_res_inst,order.inner_ord_offer_inst_pay_info_his,order.inner_ord_prod_spec_inst_his,order.master_order_attr_his,order.master_order_his,order.ord_prod_spec_inst_his,order.order_attr_his,order.order_item_his,order.order_pay_info_his,order.inner_order_attr_his,order.inner_ord_offer_inst_his,order.inner_order_meta_his,cust.offer_prod_inst_rel,cust.offer_price_plan_inst,cust.account_attr,cust.project_obj_relation \
