@@ -53,7 +53,6 @@ object MysqlCDC2Hudi {
   val SET_SERVER_ID = "serverId"
   val SET_SHARDING = "sharding"
   val SET_DB_TABLES = "dbTables"
-  //  val SET_PARALLEL_PER_TABLE = "parallelPerTable"
   val SET_BUCKETS = "buckets"
   val SET_APP_NAME = "appName"
 
@@ -157,13 +156,6 @@ object MysqlCDC2Hudi {
         })
       } else throw new Exception("tables setting must be formatted like db.table")
     })
-    //    val tblParals = mutable.Map[String, Int]()
-    //    if (argsMap.contains(SET_PARALLEL_PER_TABLE)) {
-    //      val tablesParallelismArr = argsMap(SET_PARALLEL_PER_TABLE).split("\\.")
-    //      if (tablesParallelismArr.length == tblList.length)
-    //        tablesParallelismArr.zipWithIndex.foreach(x => tblParals += (tblList(x._2) -> x._1.toInt))
-    //      else throw new Exception("table parallelism configs is not the same as given table num")
-    //    } else tblList.foreach(x => tblParals += (x -> 1))
 
     val sourceConfigFactory = new MySqlSourceConfigFactory()
       .serverId(serverId)
@@ -341,10 +333,11 @@ object MysqlCDC2Hudi {
         FlinkOptions.COMPACTION_TRIGGER_STRATEGY.key() -> "num_commits",
         FlinkOptions.COMPACTION_DELTA_COMMITS.key() -> "10",
 
-        HoodieCleanConfig.ASYNC_CLEAN.key() -> "true",
-        HoodieCleanConfig.CLEAN_MAX_COMMITS.key() -> "10",
-        FlinkOptions.CLEAN_POLICY.key() -> "KEEP_LATEST_COMMITS",
-        FlinkOptions.CLEAN_RETAIN_COMMITS.key() -> "10080",
+        HoodieCleanConfig.AUTO_CLEAN.key() -> "false",
+//        HoodieCleanConfig.ASYNC_CLEAN.key() -> "true",
+//        HoodieCleanConfig.CLEAN_MAX_COMMITS.key() -> "10",
+//        FlinkOptions.CLEAN_POLICY.key() -> "KEEP_LATEST_COMMITS",
+//        FlinkOptions.CLEAN_RETAIN_COMMITS.key() -> "10080",
         HoodieArchivalConfig.ASYNC_ARCHIVE.key() -> "true",
 
         HoodieIndexConfig.INDEX_TYPE.key() -> IndexType.BUCKET.name,
