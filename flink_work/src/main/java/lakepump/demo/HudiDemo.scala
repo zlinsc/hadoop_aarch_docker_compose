@@ -165,8 +165,11 @@ object HudiDemo {
 
       FlinkOptions.COMPACTION_SCHEDULE_ENABLED.key() -> "true",
       FlinkOptions.COMPACTION_ASYNC_ENABLED.key() -> "false",
-      FlinkOptions.COMPACTION_TRIGGER_STRATEGY.key() -> "num_commits",
+//      FlinkOptions.COMPACTION_TRIGGER_STRATEGY.key() -> "num_commits",
+//      FlinkOptions.COMPACTION_DELTA_COMMITS.key() -> "2",
+      FlinkOptions.COMPACTION_TRIGGER_STRATEGY.key() -> FlinkOptions.NUM_OR_TIME,
       FlinkOptions.COMPACTION_DELTA_COMMITS.key() -> "2",
+      FlinkOptions.COMPACTION_DELTA_SECONDS.key() -> "300",
 
       HoodieCleanConfig.ASYNC_CLEAN.key() -> "true",
       HoodieCleanConfig.CLEAN_MAX_COMMITS.key() -> "1",

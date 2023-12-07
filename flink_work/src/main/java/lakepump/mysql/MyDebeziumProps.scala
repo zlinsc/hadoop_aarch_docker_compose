@@ -7,7 +7,7 @@ object MyDebeziumProps {
     val properties = new Properties
     properties.setProperty("converters", "dateConverters")
     // 根据类在哪个包下面修改
-    properties.setProperty("dateConverters.type", "tools.mysql.MySqlDateTimeConverter")
+    properties.setProperty("dateConverters.type", "lakepump.mysql.MySqlDateTimeConverter")
 //    properties.setProperty("dateConverters.format.date", "yyyy-MM-dd")
 //    properties.setProperty("dateConverters.format.time", "HH:mm:ss")
 //    properties.setProperty("dateConverters.format.datetime", "yyyy-MM-dd HH:mm:ss")

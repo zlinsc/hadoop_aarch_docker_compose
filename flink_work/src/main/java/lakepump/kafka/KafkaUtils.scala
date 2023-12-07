@@ -1,15 +1,18 @@
 package lakepump.kafka
 
 import com.typesafe.config.{Config, ConfigFactory}
+import lakepump.pipeline.MysqlCDC2Kafka.getClass
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
-import org.apache.kafka.clients.admin.{AdminClient, TopicDescription}
+import org.apache.kafka.clients.admin.{AdminClient, NewTopic, TopicDescription}
 import org.apache.kafka.clients.consumer.ConsumerConfig
+import org.slf4j.{Logger, LoggerFactory}
 
 import java.util.Properties
 import scala.collection.JavaConverters._
 
 object KafkaUtils {
   val conf: Config = ConfigFactory.load("app_online.conf")
+  val LOG: Logger = LoggerFactory.getLogger(getClass)
 
   def getBrokerList: String = {
     // query broker list
@@ -60,6 +63,20 @@ object KafkaUtils {
     val keytabPath: String = conf.getString("kafka.keytabPath")
     val principal: String = conf.getString("kafka.principal") // change this according to submit node ip
     "com.sun.security.auth.module.Krb5LoginModule required useKeyTab=true storeKey=true keyTab=\"%s\" principal=\"%s\";".format(keytabPath, principal)
+  }
+
+  def createTopic(topic: String, partitionCount: Int, replicationFactor: Short = 3): Unit = {
+    val adminClient = AdminClient.create(getDefaultProp(true))
+    val listTopics = adminClient.listTopics()
+    if (listTopics.names().get().contains(topic)) {
+      LOG.info("Topic %s has existed", topic)
+    } else {
+      val newTopic = new NewTopic(topic, partitionCount, replicationFactor)
+      val createRslt = adminClient.createTopics(Set(newTopic).asJava)
+      createRslt.values().get(topic)
+      LOG.info("Create topic %s successfully", topic)
+    }
+    adminClient.close()
   }
 
   def main(args: Array[String]): Unit = {

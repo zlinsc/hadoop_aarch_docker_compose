@@ -1,4 +1,4 @@
-package lakepump.cdc
+package lakepump.pipeline
 
 import com.alibaba.fastjson2.JSONObject
 import com.typesafe.config.ConfigFactory

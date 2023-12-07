@@ -1,4 +1,4 @@
-package lakepump.hudi
+package lakepump.pipeline
 
 import com.typesafe.config.ConfigFactory
 import com.ververica.cdc.connectors.mysql.debezium.DebeziumUtils
@@ -56,18 +56,6 @@ object MysqlCDC2Hudi {
   val SET_BUCKETS = "buckets"
   val SET_APP_NAME = "appName"
 
-  //  val jsonConverter: JsonConverter = getJsonConverter()
-  //
-  //  private def getJsonConverter() = {
-  //    val jsonConverter = new JsonConverter()
-  //    val configs: java.util.Map[String, Any] = Map(
-  //      ConverterConfig.TYPE_CONFIG -> ConverterType.VALUE.getName,
-  //      JsonConverterConfig.SCHEMAS_ENABLE_CONFIG -> false
-  //    ).asJava
-  //    jsonConverter.configure(configs)
-  //    jsonConverter
-  //  }
-
   def main(args: Array[String]): Unit = {
     //// extract argsMap
     println("args: " + args.mkString(";"))
@@ -83,9 +71,7 @@ object MysqlCDC2Hudi {
     val appName = argsMap(SET_APP_NAME)
 
     //// savepoint recover
-    //    val appName = env.getConfiguration.get[String](YarnConfigOptions.APPLICATION_NAME)
     if (HadoopUtils.appIsRunningOrNot(appName)) throw new Exception("app of name %s is already running".format(appName))
-
     val configuration = new Configuration()
     val ckpDir = conf.getString("flink.checkpointDir")
     val jobIDCacheDir = conf.getString("flink.jobidCache")
@@ -98,7 +84,6 @@ object MysqlCDC2Hudi {
         val lastSavePath = HadoopUtils.getNewestFile(ckpDir + lastJobID)
         if (lastSavePath != null) {
           configuration.setString("execution.savepoint.path", lastSavePath.toString)
-          //          env.setDefaultSavepointDirectory(lastSavePath)
           println("use savepoint: " + lastSavePath)
         } else println("savepoint is not found on path: " + ckpDir + lastJobID)
       } else println("cache file is empty")
@@ -335,10 +320,10 @@ object MysqlCDC2Hudi {
         FlinkOptions.COMPACTION_DELTA_SECONDS.key() -> "1800",
 
         HoodieCleanConfig.AUTO_CLEAN.key() -> "false",
-//        HoodieCleanConfig.ASYNC_CLEAN.key() -> "true",
-//        HoodieCleanConfig.CLEAN_MAX_COMMITS.key() -> "10",
-//        FlinkOptions.CLEAN_POLICY.key() -> "KEEP_LATEST_COMMITS",
-//        FlinkOptions.CLEAN_RETAIN_COMMITS.key() -> "10080",
+        //        HoodieCleanConfig.ASYNC_CLEAN.key() -> "true",
+        //        HoodieCleanConfig.CLEAN_MAX_COMMITS.key() -> "10",
+        //        FlinkOptions.CLEAN_POLICY.key() -> "KEEP_LATEST_COMMITS",
+        //        FlinkOptions.CLEAN_RETAIN_COMMITS.key() -> "10080",
         HoodieArchivalConfig.ASYNC_ARCHIVE.key() -> "true",
 
         HoodieIndexConfig.INDEX_TYPE.key() -> IndexType.BUCKET.name,

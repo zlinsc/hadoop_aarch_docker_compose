@@ -18,7 +18,7 @@ if [ -n "$appid" ]; then
 fi
 flink run-application -t yarn-application -Dclient.timeout=600s -Dparallelism.default=1 -Dtaskmanager.numberOfTaskSlots=1 \
   -Dtaskmanager.memory.process.size=1gb -Djobmanager.memory.process.size=1gb -Dtaskmanager.memory.managed.fraction=0.1 \
-  -Dyarn.application.name=cdc_demo -c demo.MysqlCDCDemo flink_work-1.2.jar
+  -Dyarn.application.name=cdc_demo -c lakepump.demo.MysqlCDCDemo flink_work-1.3.jar
 
 hadoop fs -rm -r /tmp/cdc_order_hudi
 
@@ -29,7 +29,7 @@ fi
 # -Dclassloader.check-leaked-classloader=false \
 flink run-application -t yarn-application -Dclient.timeout=600s -Dparallelism.default=1 -Dtaskmanager.numberOfTaskSlots=1 \
   -Dtaskmanager.memory.process.size=1gb -Djobmanager.memory.process.size=1gb -Dtaskmanager.memory.managed.fraction=0.1 \
-  -Dyarn.application.name=hudi_demo -c demo.HudiDemo flink_work-1.2.jar
+  -Dyarn.application.name=hudi_demo -c lakepump.demo.HudiDemo flink_work-1.3.jar
 
 # appid=$(get_app_id "flinksql")
 # if [ -n "$appid" ]; then

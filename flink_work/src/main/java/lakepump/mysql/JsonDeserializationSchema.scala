@@ -58,15 +58,19 @@ import scala.collection.JavaConverters._
 }
  */
 class JsonDeserializationSchema extends DebeziumDeserializationSchema[JSONObject] {
-//  private val LOG: Logger = LoggerFactory.getLogger(getClass)
+  private val LOG: Logger = LoggerFactory.getLogger(getClass)
 
   @throws[Exception]
   override def deserialize(sourceRecord: SourceRecord, collector: Collector[JSONObject]): Unit = {
 //    LOG.info(sourceRecord.toString)
-    val jsonObj = new JSONObject()
 
     val topic = sourceRecord.topic()
     val arr = topic.split("\\.")
+    if (arr.length == 1) {
+      LOG.warn("without handler: " + sourceRecord.toString)
+      return
+    }
+    val jsonObj = new JSONObject()
     jsonObj.put("db", arr(1))
     jsonObj.put("table", arr(2))
 

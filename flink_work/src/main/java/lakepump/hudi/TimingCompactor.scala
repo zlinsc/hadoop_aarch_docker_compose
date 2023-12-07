@@ -5,7 +5,7 @@ import org.apache.hudi.sink.compact.HoodieFlinkCompactor.AsyncCompactionService
 import org.apache.hudi.sink.compact.{FlinkCompactionConfig, HoodieFlinkCompactor}
 import org.slf4j.{Logger, LoggerFactory}
 
-import java.util.concurrent.{CountDownLatch, Executors}
+import java.util.concurrent.{CountDownLatch, Executors, TimeUnit}
 import scala.collection.mutable
 
 object TimingCompactor {
@@ -38,7 +38,7 @@ object TimingCompactor {
     val cfg = new FlinkCompactionConfig()
     cfg.cleanPolicy = HoodieCleaningPolicy.KEEP_LATEST_COMMITS.name()
     cfg.cleanRetainCommits = 10080 // 1 week = 7*24*60 minutes
-    cfg.minCompactionIntervalSeconds = 600 // half hour = 10*60 seconds
+    cfg.minCompactionIntervalSeconds = 600 // 10 minutes = 10*60 seconds
     cfg.serviceMode = false
     cfg.archiveMinCommits = cfg.cleanRetainCommits + 10
     cfg.archiveMaxCommits = cfg.archiveMinCommits + 10
@@ -59,18 +59,24 @@ object TimingCompactor {
             cfg.path = "%s/%s/%s/".format(HUDI_ROOT_PATH, db, table)
             LOG.info("compact hudi table path: " + cfg.path)
             val conf = FlinkCompactionConfig.toFlinkConfig(cfg)
-            val service = new AsyncCompactionService(cfg, conf)
             val task = new Runnable {
               def run(): Unit = {
-                new HoodieFlinkCompactor(service).start(cfg.serviceMode)
-                latch.countDown()
+                try {
+                  val service = new AsyncCompactionService(cfg, conf)
+                  new HoodieFlinkCompactor(service).start(cfg.serviceMode)
+                } catch {
+                  case e: Exception =>
+                    LOG.error("Error in compaction task", e)
+                } finally {
+                  latch.countDown()
+                }
               }
             }
             threadPool.submit(task)
           }
         } else throw new Exception("%s miss splittable point".format(x))
       })
-      latch.await()
+      latch.await(60, TimeUnit.MINUTES)
       Thread.sleep(cfg.minCompactionIntervalSeconds * 1000)
     }
   }

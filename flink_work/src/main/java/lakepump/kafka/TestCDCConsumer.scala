@@ -1,6 +1,5 @@
-package lakepump.cdc
+package lakepump.kafka
 
-import lakepump.kafka.{KafkaUtils, MyDeserializationSchema}
 import org.apache.flink.api.common.eventtime.WatermarkStrategy
 import org.apache.flink.api.common.state.{MapState, MapStateDescriptor}
 import org.apache.flink.api.common.typeinfo.TypeInformation
