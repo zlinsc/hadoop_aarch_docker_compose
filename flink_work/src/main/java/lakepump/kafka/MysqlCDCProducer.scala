@@ -1,11 +1,10 @@
-package lakepump.pipeline
+package lakepump.kafka
 
 import com.alibaba.fastjson2.JSONObject
 import com.typesafe.config.ConfigFactory
 import com.ververica.cdc.connectors.mysql.source.MySqlSource
 import com.ververica.cdc.connectors.mysql.table.StartupOptions
 import lakepump.kafka.KafkaUtils.getDefaultProp
-import lakepump.kafka.{KafkaUtils, MyKeySerializationSchema, MyShardPartitioner, MyValueSerializationSchema}
 import lakepump.mysql.{JsonDeserializationSchema, MyDebeziumProps}
 import org.apache.flink.api.common.eventtime.WatermarkStrategy
 import org.apache.flink.connector.base.DeliveryGuarantee
@@ -15,7 +14,6 @@ import org.apache.flink.streaming.api.CheckpointingMode
 import org.apache.flink.streaming.api.environment.CheckpointConfig.ExternalizedCheckpointCleanup
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.kafka.clients.admin.{AdminClient, NewTopic}
-
 import scala.collection.JavaConverters._
 
 object MysqlCDCProducer {

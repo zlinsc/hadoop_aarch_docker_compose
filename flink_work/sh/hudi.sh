@@ -44,7 +44,7 @@ function run() {
   -Dyarn.application.name=$appName -Dyarn.application.queue=$3 \
   -Djobmanager.memory.process.size=8gb -Dtaskmanager.numberOfTaskSlots=4 -Dparallelism.default=4 \
   -Dtaskmanager.memory.process.size=32gb -Dtaskmanager.memory.managed.fraction=0.2 -Dtaskmanager.memory.network.fraction=0.1 \
-  -c lakepump.pipeline.MysqlCDC2Hudi flink_work-1.3.jar dbInstance=$1 serverId=5601-5604 sharding=$2 appName=$appName \
+  -c lakepump.hudi.MysqlCDC2Hudi flink_work-1.3.jar dbInstance=$1 serverId=5601-5604 sharding=$2 appName=$appName \
   dbTables=cust.prod_spec_inst,cust.prod_spec_inst_attr,cust.prod_spec_res_inst,order.inner_ord_offer_inst_pay_info_his,order.inner_ord_prod_spec_inst_his,order.master_order_attr_his,order.master_order_his,order.ord_prod_spec_inst_his,order.order_attr_his,order.order_item_his,order.order_pay_info_his,order.inner_order_attr_his,order.inner_ord_offer_inst_his,order.inner_order_meta_his,cust.offer_prod_inst_rel,cust.offer_price_plan_inst,cust.account_attr,cust.project_obj_relation \
   buckets=23,280,23,20,24,93,13,22,80,44,3,104,24,15,23,17,23,10
 }
@@ -98,7 +98,7 @@ function run2kafka() {
   -Dyarn.application.name=$appName -Dyarn.application.queue=$3 \
   -Djobmanager.memory.process.size=8gb -Dtaskmanager.numberOfTaskSlots=4 -Dparallelism.default=4 \
   -Dtaskmanager.memory.process.size=16gb -Dtaskmanager.memory.managed.fraction=0.2 -Dtaskmanager.memory.network.fraction=0.1 \
-  -c lakepump.pipeline.MysqlCDC2Kafka flink_work-1.3.jar dbInstance=$1 serverId=5601-5604 sharding=$2 appName=$appName \
+  -c lakepump.kafka.MysqlCDC2Kafka flink_work-1.3.jar dbInstance=$1 serverId=5601-5604 sharding=$2 appName=$appName \
   dbTables=order.inner_ord_offer_inst_pay_info,order.master_order,order.master_order_his \
   buckets=1,1,13
 }

@@ -1,7 +1,7 @@
 package lakepump.kafka
 
 import com.typesafe.config.{Config, ConfigFactory}
-import lakepump.pipeline.MysqlCDC2Kafka.getClass
+import MysqlCDC2Kafka.getClass
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.kafka.clients.admin.{AdminClient, NewTopic, TopicDescription}
 import org.apache.kafka.clients.consumer.ConsumerConfig

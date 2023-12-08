@@ -1,5 +1,6 @@
-package lakepump.pipeline
+package lakepump.kafka
 
+import com.alibaba.fastjson2.JSONObject
 import com.typesafe.config.ConfigFactory
 import com.ververica.cdc.connectors.mysql.debezium.DebeziumUtils
 import com.ververica.cdc.connectors.mysql.schema.MySqlTypeUtils
@@ -9,15 +10,16 @@ import com.ververica.cdc.connectors.mysql.source.utils.TableDiscoveryUtils
 import com.ververica.cdc.connectors.mysql.table.StartupOptions
 import com.ververica.cdc.debezium.DebeziumDeserializationSchema
 import io.debezium.connector.mysql.MySqlPartition
-import io.debezium.data.Envelope
 import io.debezium.relational.TableId
 import lakepump.hadoop.HadoopUtils
-import lakepump.mysql.{MyDebeziumProps, RowDataDeserializationRuntimeConverter, ShardDeserializationRuntimeConverterFactory}
+import lakepump.mysql.MyDebeziumProps
 import org.apache.flink.api.common.eventtime.WatermarkStrategy
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.functions.KeySelector
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable
 import org.apache.flink.configuration.Configuration
+import org.apache.flink.connector.base.DeliveryGuarantee
+import org.apache.flink.connector.kafka.sink.{KafkaRecordSerializationSchema, KafkaSink}
 import org.apache.flink.contrib.streaming.state.EmbeddedRocksDBStateBackend
 import org.apache.flink.core.fs.Path
 import org.apache.flink.streaming.api.CheckpointingMode
@@ -25,27 +27,16 @@ import org.apache.flink.streaming.api.datastream.DataStream
 import org.apache.flink.streaming.api.environment.CheckpointConfig.ExternalizedCheckpointCleanup
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.flink.streaming.api.functions.{KeyedProcessFunction, ProcessFunction}
-import org.apache.flink.table.api.Schema
-import org.apache.flink.table.data.{GenericRowData, RowData}
 import org.apache.flink.table.types.logical.RowType
-import org.apache.flink.table.types.utils.TypeConversions
-import org.apache.flink.util.Preconditions.checkNotNull
 import org.apache.flink.util.{Collector, OutputTag}
-import org.apache.hudi.common.model.{HoodieTableType, WriteOperationType}
-import org.apache.hudi.config.{HoodieArchivalConfig, HoodieCleanConfig, HoodieIndexConfig, HoodieLayoutConfig}
-import org.apache.hudi.configuration.FlinkOptions
-import org.apache.hudi.index.HoodieIndex.{BucketIndexEngineType, IndexType}
-import org.apache.hudi.table.storage.HoodieStorageLayout
-import org.apache.hudi.util.HoodiePipeline
 import org.apache.kafka.connect.data.Struct
 import org.apache.kafka.connect.source.SourceRecord
 import org.slf4j.{Logger, LoggerFactory}
 
-import java.time.ZoneId
-import scala.collection.JavaConverters._
 import scala.collection.mutable
+import scala.collection.JavaConverters._
 
-object MysqlCDC2Hudi {
+object MysqlCDC2Kafka {
   val LOG: Logger = LoggerFactory.getLogger(getClass)
 
   val SET_STARTUP = "startup"
@@ -153,11 +144,11 @@ object MysqlCDC2Hudi {
       .closeIdleReaders(false)
       .includeSchemaChanges(true)
       .scanNewlyAddedTableEnabled(true)
-      .debeziumProperties(MyDebeziumProps.getHudiProps)
+      .debeziumProperties(MyDebeziumProps.getProps)
       .startupOptions(startup)
       .serverTimeZone(timeZone)
 
-    //// hudi bucket config
+    //// bucket config
     val buckets = argsMap(SET_BUCKETS).split(",")
     if (buckets.length != tblList.length) throw new Exception("buckets list size is not equal to tables list")
     val bucketMap = mutable.Map[String, Int]()
@@ -190,7 +181,7 @@ object MysqlCDC2Hudi {
     //    println("cols=" + tableRowMap.mkString(";"))
 
     //// build source
-    case class RecPack(tag: String, key: Int, row: RowData)
+    case class RecPack(tag: String, key: Int, row: JSONObject)
     val mysqlSource = MySqlSource.builder[RecPack]()
       .serverId(serverId)
       .hostname(host)
@@ -202,7 +193,7 @@ object MysqlCDC2Hudi {
       .closeIdleReaders(false)
       .includeSchemaChanges(true)
       .scanNewlyAddedTableEnabled(true)
-      .debeziumProperties(MyDebeziumProps.getHudiProps)
+      .debeziumProperties(MyDebeziumProps.getProps)
       .startupOptions(startup)
       .serverTimeZone(timeZone)
       .deserializer(new DebeziumDeserializationSchema[RecPack] {
@@ -211,53 +202,59 @@ object MysqlCDC2Hudi {
           val arr = topic.split("\\.")
           if (arr.length == 1) {
             LOG.warn("without handler: " + sourceRecord.toString)
-          } else if (arr.length == 3) {
-            val db = arr(1)
-            val table = arr(2)
-            val regex = "_\\d+$".r
-            val tagName = regex.replaceAllIn(db, "") + "." + table
-
-            val keyHash = sourceRecord.key().hashCode()
-            //            val bytes = MysqlCDC2Hudi.jsonConverter.fromConnectData(sourceRecord.topic(), sourceRecord.valueSchema(), sourceRecord.value())
-            //            val schemaAndValue = MysqlCDC2Hudi.jsonConverter.toConnectData(sourceRecord.topic(), bytes)
-            val value = sourceRecord.value().asInstanceOf[Struct]
-            val valueSchema = sourceRecord.valueSchema()
-            val opField = value.schema.field("op")
-            if (opField != null) {
-              val fullName = "%s.%s".format(db, table)
-              val conv = RowDataDeserializationRuntimeConverter.createConverter(checkNotNull(tableRowMap(fullName)._2),
-                ZoneId.of(timeZone), new ShardDeserializationRuntimeConverterFactory(sharding))
-
-              val op = value.getString(opField.name)
-              if (op == "c" || op == "r") {
-                val after = value.getStruct(Envelope.FieldName.AFTER)
-                val afterSchema = valueSchema.field(Envelope.FieldName.AFTER).schema
-                val afterRowData = conv.convert(after, afterSchema).asInstanceOf[GenericRowData]
-                out.collect(RecPack(tagName, keyHash, afterRowData))
-              } else if (op == "d") {
-                val before = value.getStruct(Envelope.FieldName.BEFORE)
-                val beforeSchema = valueSchema.field(Envelope.FieldName.BEFORE).schema
-                val beforeRowData = conv.convert(before, beforeSchema).asInstanceOf[GenericRowData]
-                out.collect(RecPack(tagName, keyHash, beforeRowData))
-              } else if (op == "u") {
-                val before = value.getStruct(Envelope.FieldName.BEFORE)
-                val beforeSchema = valueSchema.field(Envelope.FieldName.BEFORE).schema
-                val beforeRowData = conv.convert(before, beforeSchema).asInstanceOf[GenericRowData]
-                out.collect(RecPack(tagName, keyHash, beforeRowData))
-
-                val after = value.getStruct(Envelope.FieldName.AFTER)
-                val afterSchema = valueSchema.field(Envelope.FieldName.AFTER).schema
-                val afterRowData = conv.convert(after, afterSchema).asInstanceOf[GenericRowData]
-                out.collect(RecPack(tagName, keyHash, afterRowData))
-              } else {
-                LOG.error("op %s is not support".format(op))
-              }
-            } else {
-              LOG.error("with out op: " + value.toString)
-            }
-          } else {
-            LOG.warn("without handler: " + sourceRecord.toString)
+            return
           }
+          val jsonObj = new JSONObject()
+          val db = arr(1)
+          val table = arr(2)
+          jsonObj.put("db", db)
+          jsonObj.put("table", table)
+
+          val key = sourceRecord.key().asInstanceOf[Struct]
+          if (key != null) {
+            val keyJson = new JSONObject()
+            for (field <- key.schema().fields().asScala) {
+              keyJson.put(field.name(), key.get(field))
+            }
+            jsonObj.put("key", keyJson)
+          }
+
+          val value = sourceRecord.value().asInstanceOf[Struct]
+          val before = value.getStruct("before")
+          if (before != null) {
+            val beforeJson = new JSONObject()
+            for (field <- before.schema().fields().asScala) {
+              beforeJson.put(field.name(), before.get(field))
+            }
+            jsonObj.put("before", beforeJson)
+          }
+          val after = value.getStruct("after")
+          if (after != null) {
+            val afterJson = new JSONObject()
+            for (field <- after.schema().fields().asScala) {
+              afterJson.put(field.name(), after.get(field))
+            }
+            jsonObj.put("after", afterJson)
+          }
+
+          val opField = value.schema.field("op")
+          if (opField != null) {
+            val op = value.getString(opField.name)
+            jsonObj.put("op", op)
+          }
+
+          val tsField = value.schema.field("ts_ms")
+          if (tsField != null) {
+            val ts = value.getInt64(tsField.name)
+            jsonObj.put("cdc_ts", ts.toString)
+          }
+          jsonObj.put("prd_ts", System.currentTimeMillis().toString)
+
+          val regex = "_\\d+$".r
+          val tagName = regex.replaceAllIn(db, "") + "." + table
+          val keyHash = sourceRecord.key().hashCode()
+
+          out.collect(RecPack(tagName, keyHash, jsonObj))
         }
 
         override def getProducedType: TypeInformation[RecPack] = TypeInformation.of(classOf[RecPack])
@@ -282,65 +279,35 @@ object MysqlCDC2Hudi {
           override def getKey(in: RecPack): Int = in.key
 
           override def getProducedType: TypeInformation[RecPack] = TypeInformation.of(classOf[RecPack])
-        }).process(new KeyedProcessFunction[Int, RecPack, RowData] {
+        }).process(new KeyedProcessFunction[Int, RecPack, JSONObject] {
         override def processElement(in: RecPack,
-                                    ctx: KeyedProcessFunction[Int, RecPack, RowData]#Context,
-                                    out: Collector[RowData]): Unit = {
+                                    ctx: KeyedProcessFunction[Int, RecPack, JSONObject]#Context,
+                                    out: Collector[JSONObject]): Unit = {
           out.collect(in.row)
         }
       }).setParallelism(bucketParallel).uid("dist:" + x)
 
-      //// hudi sink
+      //// kafka sink
       val targetArr = x.split("\\.")
-      val targetDB = "hudi_%s".format(targetArr(0))
-      val targetTable = "%s_%s".format(targetArr(1), sharding)
-      val targetHdfsPath = "%s/%s/%s".format(conf.getString("hudi.hdfsPath"), targetDB, targetTable)
-
-      val headTbl = "%s%s.%s".format(targetArr(0), dbPostfix.head, targetArr(1)) // use first database schema
-      val tblRow = tableRowMap(headTbl)
-      val schema = Schema.newBuilder().fromFields(tblRow._1.asJava,
-        tblRow._2.getFields.asScala.map(_.getType).map(TypeConversions.fromLogicalToDataType).asJava).build
-      val options = Map(
-        FlinkOptions.PATH.key() -> targetHdfsPath,
-        FlinkOptions.TABLE_TYPE.key() -> HoodieTableType.MERGE_ON_READ.name(),
-        FlinkOptions.PRECOMBINE_FIELD.key() -> tablePkMap(headTbl).head,
-        FlinkOptions.OPERATION.key() -> WriteOperationType.UPSERT.value(),
-
-        FlinkOptions.HIVE_SYNC_ENABLED.key() -> "true",
-        FlinkOptions.HIVE_SYNC_DB.key() -> targetDB,
-        FlinkOptions.HIVE_SYNC_TABLE.key() -> targetTable,
-        FlinkOptions.HIVE_SYNC_MODE.key() -> "hms",
-        FlinkOptions.HIVE_SYNC_METASTORE_URIS.key() -> conf.getString("hudi.metastoreUris"),
-        FlinkOptions.HIVE_SYNC_CONF_DIR.key() -> "/etc/hive/conf",
-
-        FlinkOptions.COMPACTION_SCHEDULE_ENABLED.key() -> "true",
-        FlinkOptions.COMPACTION_ASYNC_ENABLED.key() -> "false",
-        FlinkOptions.COMPACTION_TRIGGER_STRATEGY.key() -> FlinkOptions.NUM_OR_TIME,
-        FlinkOptions.COMPACTION_DELTA_COMMITS.key() -> "5",
-        FlinkOptions.COMPACTION_DELTA_SECONDS.key() -> "1800",
-
-        HoodieCleanConfig.AUTO_CLEAN.key() -> "false",
-        //        HoodieCleanConfig.ASYNC_CLEAN.key() -> "true",
-        //        HoodieCleanConfig.CLEAN_MAX_COMMITS.key() -> "10",
-        //        FlinkOptions.CLEAN_POLICY.key() -> "KEEP_LATEST_COMMITS",
-        //        FlinkOptions.CLEAN_RETAIN_COMMITS.key() -> "10080",
-        HoodieArchivalConfig.ASYNC_ARCHIVE.key() -> "true",
-
-        HoodieIndexConfig.INDEX_TYPE.key() -> IndexType.BUCKET.name,
-        HoodieIndexConfig.BUCKET_INDEX_ENGINE_TYPE.key() -> BucketIndexEngineType.SIMPLE.name(),
-        HoodieIndexConfig.BUCKET_INDEX_NUM_BUCKETS.key() -> bucketMap(x).toString,
-        HoodieLayoutConfig.LAYOUT_TYPE.key() -> HoodieStorageLayout.LayoutType.BUCKET.name,
-        HoodieLayoutConfig.LAYOUT_PARTITIONER_CLASS_NAME.key() -> HoodieLayoutConfig.SIMPLE_BUCKET_LAYOUT_PARTITIONER_CLASS_NAME,
-
-        FlinkOptions.WRITE_TASKS.key() -> bucketParallel.toString,
-        FlinkOptions.BUCKET_ASSIGN_TASKS.key() -> bucketParallel.toString,
-      ).asJava
-      val hudiBuilder = HoodiePipeline.builder("%s_%s".format(targetDB, targetTable))
-        .schema(schema)
-        .pk(tablePkMap(headTbl): _*)
-        //        .partition(SET_SHARDING)
-        .options(options)
-      hudiBuilder.sink(srcByTag, false).uid("sink2Hudi:" + x)
+      val targetDB = targetArr(0)
+      var targetTable = targetArr(1)
+      val specSymb = targetTable.indexOf("[") // 将acct_item_total_month_[0-9]{6}转为acct_item_total_month
+      targetTable = if (specSymb == -1) targetTable else targetTable.substring(0, specSymb - 1)
+      val topic = "t_%s_%s".format(targetDB, targetTable)
+      KafkaUtils.createTopic(topic, group.length * dbPostfix.length)
+      val sink = KafkaSink.builder()
+        .setRecordSerializer(KafkaRecordSerializationSchema.builder()
+          .setTopic(topic)
+          .setPartitioner(new MyShardPartitioner)
+          .setKeySerializationSchema(new MyKeySerializationSchema)
+          .setValueSerializationSchema(new MyValueSerializationSchema)
+          .build()
+        )
+        .setDeliveryGuarantee(DeliveryGuarantee.EXACTLY_ONCE)
+        .setTransactionalIdPrefix(System.currentTimeMillis().toString)
+        .setKafkaProducerConfig(KafkaUtils.getDefaultProp(true))
+        .build()
+      srcByTag.sinkTo(sink).setParallelism(bucketParallel).uid("sink2Kafka:" + x)
     }
 
     //// execute
