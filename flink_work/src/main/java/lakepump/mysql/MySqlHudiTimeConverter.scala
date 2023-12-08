@@ -10,7 +10,7 @@ import java.time._
 import java.time.format.DateTimeFormatter
 import java.util.Properties
 
-class MySqlDateTimeConverter extends CustomConverter[SchemaBuilder, RelationalColumn] {
+class MySqlHudiTimeConverter extends CustomConverter[SchemaBuilder, RelationalColumn] {
   private val LOG: Logger = LoggerFactory.getLogger(getClass)
 
   private val dateFormatter: DateTimeFormatter = DateTimeFormatter.ISO_DATE
@@ -75,11 +75,11 @@ class MySqlDateTimeConverter extends CustomConverter[SchemaBuilder, RelationalCo
   private def convertDateTime(input: Any): String = {
     input match {
       case ts: Timestamp =>
-        timestampFormatter.format(ts.toLocalDateTime).replaceAll("T", " ")
-//        timestampFormatter.format(ts.toLocalDateTime) + "Z"
+//        timestampFormatter.format(ts.toLocalDateTime).replaceAll("T", " ")
+        timestampFormatter.format(ts.toLocalDateTime) + "Z"
       case dateTime: LocalDateTime =>
-        datetimeFormatter.format(dateTime).replaceAll("T", " ")
-//        datetimeFormatter.format(dateTime) + "Z"
+//        datetimeFormatter.format(dateTime).replaceAll("T", " ")
+        datetimeFormatter.format(dateTime) + "Z"
       case _ =>
         null
     }

@@ -145,11 +145,11 @@ object MysqlCDC2Kafka {
       .closeIdleReaders(false)
       .includeSchemaChanges(true)
       .scanNewlyAddedTableEnabled(true)
-      .debeziumProperties(MyDebeziumProps.getDebeziumProperties)
+      .debeziumProperties(MyDebeziumProps.getProps)
       .startupOptions(startup)
       .serverTimeZone(timeZone)
 
-    //// hudi bucket config
+    //// bucket config
     val buckets = argsMap(SET_BUCKETS).split(",")
     if (buckets.length != tblList.length) throw new Exception("buckets list size is not equal to tables list")
     val bucketMap = mutable.Map[String, Int]()
@@ -194,7 +194,7 @@ object MysqlCDC2Kafka {
       .closeIdleReaders(false)
       .includeSchemaChanges(true)
       .scanNewlyAddedTableEnabled(true)
-      .debeziumProperties(MyDebeziumProps.getDebeziumProperties)
+      .debeziumProperties(MyDebeziumProps.getProps)
       .startupOptions(startup)
       .serverTimeZone(timeZone)
       .deserializer(new DebeziumDeserializationSchema[RecPack] {
@@ -308,7 +308,7 @@ object MysqlCDC2Kafka {
         .setTransactionalIdPrefix(System.currentTimeMillis().toString)
         .setKafkaProducerConfig(KafkaUtils.getDefaultProp(true))
         .build()
-      srcByTag.sinkTo(sink).uid("sink2Kafka:" + x)
+      srcByTag.sinkTo(sink).setParallelism(bucketParallel).uid("sink2Kafka:" + x)
     }
 
     //// execute

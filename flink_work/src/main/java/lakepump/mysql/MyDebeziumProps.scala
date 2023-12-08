@@ -3,10 +3,9 @@ package lakepump.mysql
 import java.util.Properties
 
 object MyDebeziumProps {
-  def getDebeziumProperties: Properties = {
+  def getProps: Properties = {
     val properties = new Properties
     properties.setProperty("converters", "dateConverters")
-    // 根据类在哪个包下面修改
     properties.setProperty("dateConverters.type", "lakepump.mysql.MySqlDateTimeConverter")
 //    properties.setProperty("dateConverters.format.date", "yyyy-MM-dd")
 //    properties.setProperty("dateConverters.format.time", "HH:mm:ss")
@@ -17,6 +16,13 @@ object MyDebeziumProps {
 //    properties.setProperty("include.schema.changes", "true")
 //    properties.setProperty("bigint.unsigned.handling.mode", "long")
 //    properties.setProperty("decimal.handling.mode", "double")
+    properties
+  }
+
+  def getHudiProps: Properties = {
+    val properties = new Properties
+    properties.setProperty("converters", "dateConverters")
+    properties.setProperty("dateConverters.type", "lakepump.mysql.MySqlHudiTimeConverter")
     properties
   }
 }

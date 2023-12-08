@@ -5,7 +5,7 @@ import org.apache.hudi.sink.compact.HoodieFlinkCompactor.AsyncCompactionService
 import org.apache.hudi.sink.compact.{FlinkCompactionConfig, HoodieFlinkCompactor}
 import org.slf4j.{Logger, LoggerFactory}
 
-import java.util.concurrent.{CountDownLatch, Executors, TimeUnit}
+import java.util.concurrent._
 import scala.collection.mutable
 
 object TimingCompactor {
@@ -15,6 +15,19 @@ object TimingCompactor {
   val SET_DB_TABLES = "dbTables"
   val SET_BUCKETS = "buckets"
   val SHARDING_MAX_NUM = 8
+
+  class MyBlockingQueue[T](size: Int) extends LinkedBlockingQueue[T](size) {
+    override def offer(t: T): Boolean = {
+      try {
+        put(t)
+        true
+      } catch {
+        case e: InterruptedException =>
+          Thread.currentThread().interrupt()
+          false
+      }
+    }
+  }
 
   def main(args: Array[String]): Unit = {
     //// extract argsMap
@@ -43,12 +56,25 @@ object TimingCompactor {
     cfg.archiveMinCommits = cfg.cleanRetainCommits + 10
     cfg.archiveMaxCommits = cfg.archiveMinCommits + 10
 
+    //// create thread pool
+    val corePoolSize = 4
+    val maximumPoolSize = 4
+    val keepAliveTime = 0
+    val unit = TimeUnit.SECONDS
+    val workQueue: BlockingQueue[Runnable] = new MyBlockingQueue[Runnable](16)
+    val threadFactory = Executors.defaultThreadFactory()
+    val threadPool = new ThreadPoolExecutor(
+      corePoolSize,
+      maximumPoolSize,
+      keepAliveTime,
+      unit,
+      workQueue,
+      threadFactory
+    )
+
     //// do compaction
-    val threadPool = Executors.newFixedThreadPool(4)
-    val taskNum = tblList.size * SHARDING_MAX_NUM
     while (true) {
       LOG.info("start to compact hudi table")
-      val latch = new CountDownLatch(taskNum)
       tblList.foreach(x => {
         cfg.compactionTasks = Math.min(bucketMap(x), 16)
         val arr = x.split("\\.")
@@ -67,8 +93,6 @@ object TimingCompactor {
                 } catch {
                   case e: Exception =>
                     LOG.error("Error in compaction task", e)
-                } finally {
-                  latch.countDown()
                 }
               }
             }
@@ -76,7 +100,6 @@ object TimingCompactor {
           }
         } else throw new Exception("%s miss splittable point".format(x))
       })
-      latch.await(60, TimeUnit.MINUTES)
       Thread.sleep(cfg.minCompactionIntervalSeconds * 1000)
     }
   }

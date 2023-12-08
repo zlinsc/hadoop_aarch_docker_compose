@@ -153,7 +153,7 @@ object MysqlCDC2Hudi {
       .closeIdleReaders(false)
       .includeSchemaChanges(true)
       .scanNewlyAddedTableEnabled(true)
-      .debeziumProperties(MyDebeziumProps.getDebeziumProperties)
+      .debeziumProperties(MyDebeziumProps.getHudiProps)
       .startupOptions(startup)
       .serverTimeZone(timeZone)
 
@@ -202,7 +202,7 @@ object MysqlCDC2Hudi {
       .closeIdleReaders(false)
       .includeSchemaChanges(true)
       .scanNewlyAddedTableEnabled(true)
-      .debeziumProperties(MyDebeziumProps.getDebeziumProperties)
+      .debeziumProperties(MyDebeziumProps.getHudiProps)
       .startupOptions(startup)
       .serverTimeZone(timeZone)
       .deserializer(new DebeziumDeserializationSchema[RecPack] {

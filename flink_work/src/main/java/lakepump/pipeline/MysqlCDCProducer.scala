@@ -72,7 +72,7 @@ object MysqlCDCProducer {
       .username(username)
       .password(password)
       .closeIdleReaders(true)
-      .debeziumProperties(MyDebeziumProps.getDebeziumProperties)
+      .debeziumProperties(MyDebeziumProps.getProps)
       .startupOptions(startup)
       .deserializer(new JsonDeserializationSchema())
       .serverTimeZone("Asia/Shanghai")
