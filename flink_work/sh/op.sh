@@ -43,6 +43,7 @@ function run2kafka() {
   -Dsecurity.kerberos.login.use-ticket-cache=false -Dsecurity.kerberos.login.contexts=Client,KafkaClient \
   -Dsecurity.kerberos.login.principal=ads/hdp-tmp007.nm.ctdcp.com@BIGDATA.CHINATELECOM.CN \
   -Dsecurity.kerberos.login.keytab=/etc/security/keytabs/ads.keytab \
+  -Dclassloader.check-leaked-classloader=false \
   -Djobmanager.archive.fs.dir=hdfs://ctyunns/flink-history/realjob -Dhistoryserver.archive.fs.dir=hdfs://ctyunns/flink-history/realjob \
   -Dclient.timeout=600s -Dtaskmanager.slot.timeout=300s -Dakka.ask.timeout=300s \
   -Dyarn.application.name=$appName -Dyarn.application.queue=$3 \
@@ -68,14 +69,17 @@ function run2hudi() {
   -Dsecurity.kerberos.login.use-ticket-cache=false -Dsecurity.kerberos.login.contexts=Client,KafkaClient \
   -Dsecurity.kerberos.login.principal=ads/hdp-tmp007.nm.ctdcp.com@BIGDATA.CHINATELECOM.CN \
   -Dsecurity.kerberos.login.keytab=/etc/security/keytabs/ads.keytab \
+  -Dclassloader.check-leaked-classloader=false \
   -Djobmanager.archive.fs.dir=hdfs://ctyunns/flink-history/realjob -Dhistoryserver.archive.fs.dir=hdfs://ctyunns/flink-history/realjob \
   -Dclient.timeout=600s -Dtaskmanager.slot.timeout=300s -Dakka.ask.timeout=300s \
   -Dyarn.application.name=$appName -Dyarn.application.queue=$3 \
   -Djobmanager.memory.process.size=8gb -Dtaskmanager.numberOfTaskSlots=4 -Dparallelism.default=4 \
   -Dtaskmanager.memory.process.size=32gb -Dtaskmanager.memory.managed.fraction=0.2 -Dtaskmanager.memory.network.fraction=0.1 \
   -c lakepump.hudi.MysqlCDC2Hudi flink_work-1.3.jar dbInstance=$1 serverId=5611-5614 sharding=$2 appName=$appName \
-  dbTables=cust.prod_spec_inst,cust.prod_spec_inst_attr,cust.prod_spec_res_inst,order.inner_ord_offer_inst_pay_info_his,order.inner_ord_prod_spec_inst_his,order.master_order_attr_his,order.master_order_his,order.ord_prod_spec_inst_his,order.order_attr_his,order.order_item_his,order.order_pay_info_his,order.inner_order_attr_his,order.inner_ord_offer_inst_his,order.inner_order_meta_his,cust.offer_prod_inst_rel,cust.offer_price_plan_inst,cust.account_attr,cust.project_obj_relation \
-  buckets=23,280,23,20,24,93,13,22,80,44,3,104,24,15,23,17,23,10
+  dbTables=acctdb.payment \
+  buckets=10
+#  dbTables=cust.prod_spec_inst,cust.prod_spec_inst_attr,cust.prod_spec_res_inst,order.inner_ord_offer_inst_pay_info_his,order.inner_ord_prod_spec_inst_his,order.master_order_attr_his,order.master_order_his,order.ord_prod_spec_inst_his,order.order_attr_his,order.order_item_his,order.order_pay_info_his,order.inner_order_attr_his,order.inner_ord_offer_inst_his,order.inner_order_meta_his,cust.offer_prod_inst_rel,cust.offer_price_plan_inst,cust.account_attr,cust.project_obj_relation \
+#  buckets=23,280,23,20,24,93,13,22,80,44,3,104,24,15,23,17,23,10
 }
 run2hudi mysql_crm 0 dws
 run2hudi mysql_crm 1 dws
@@ -86,11 +90,21 @@ run2hudi mysql_crm 5 dws
 run2hudi mysql_crm 6 dws
 run2hudi mysql_crm 7 dws
 
+run2hudi mysql_account 0 dws
+run2hudi mysql_account 1 dws
+run2hudi mysql_account 2 dws
+run2hudi mysql_account 3 dws
+run2hudi mysql_account 4 dws
+run2hudi mysql_account 5 dws
+run2hudi mysql_account 6 dws
+run2hudi mysql_account 7 dws
+
 function compact() {
 ./flink-1.17.0-x/bin/flink run-application -t yarn-application -Dyarn.provided.lib.dirs=hdfs://ctyunns/user/ads/flink/lib2 \
   -Dsecurity.kerberos.login.use-ticket-cache=false -Dsecurity.kerberos.login.contexts=Client,KafkaClient \
   -Dsecurity.kerberos.login.principal=ads/hdp-tmp007.nm.ctdcp.com@BIGDATA.CHINATELECOM.CN \
   -Dsecurity.kerberos.login.keytab=/etc/security/keytabs/ads.keytab \
+  -Dclassloader.check-leaked-classloader=false \
   -Dclient.timeout=600s -Dtaskmanager.slot.timeout=300s -Dakka.ask.timeout=300s \
   -Dyarn.application.name=compact_hudi_tables -Dyarn.application.queue=ads \
   -Djobmanager.memory.process.size=4gb -Dtaskmanager.numberOfTaskSlots=4 -Dparallelism.default=4 \

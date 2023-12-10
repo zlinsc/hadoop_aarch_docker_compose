@@ -85,18 +85,16 @@ object TimingCompactor {
             cfg.path = "%s/%s/%s/".format(HUDI_ROOT_PATH, db, table)
             LOG.info("compact hudi table path: " + cfg.path)
             val conf = FlinkCompactionConfig.toFlinkConfig(cfg)
-            val task = new Runnable {
-              def run(): Unit = {
-                try {
-                  val service = new AsyncCompactionService(cfg, conf)
-                  new HoodieFlinkCompactor(service).start(cfg.serviceMode)
-                } catch {
-                  case e: Exception =>
-                    LOG.error("Error in compaction task", e)
-                }
+            val runnableTask: Runnable = () => {
+              try {
+                val service = new AsyncCompactionService(cfg, conf)
+                new HoodieFlinkCompactor(service).start(cfg.serviceMode)
+              } catch {
+                case e: Exception =>
+                  LOG.error("Error in compaction task", e)
               }
             }
-            threadPool.submit(task)
+            threadPool.submit(runnableTask)
           }
         } else throw new Exception("%s miss splittable point".format(x))
       })

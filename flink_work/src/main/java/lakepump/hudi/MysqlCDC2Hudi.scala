@@ -322,9 +322,10 @@ object MysqlCDC2Hudi {
         HoodieCleanConfig.AUTO_CLEAN.key() -> "false",
         //        HoodieCleanConfig.ASYNC_CLEAN.key() -> "true",
         //        HoodieCleanConfig.CLEAN_MAX_COMMITS.key() -> "10",
-        //        FlinkOptions.CLEAN_POLICY.key() -> "KEEP_LATEST_COMMITS",
-        //        FlinkOptions.CLEAN_RETAIN_COMMITS.key() -> "10080",
         HoodieArchivalConfig.ASYNC_ARCHIVE.key() -> "true",
+        FlinkOptions.CLEAN_ASYNC_ENABLED.key() -> "false",
+        FlinkOptions.CLEAN_POLICY.key() -> "KEEP_LATEST_COMMITS",
+        FlinkOptions.CLEAN_RETAIN_COMMITS.key() -> "10080",
 
         HoodieIndexConfig.INDEX_TYPE.key() -> IndexType.BUCKET.name,
         HoodieIndexConfig.BUCKET_INDEX_ENGINE_TYPE.key() -> BucketIndexEngineType.SIMPLE.name(),
