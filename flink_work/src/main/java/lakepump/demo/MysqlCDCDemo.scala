@@ -23,6 +23,9 @@ import lakepump.mysql.JsonDeserializationSchema
  *
  * ## recover from checkpoint
  * flink run-application -t yarn-application -Dyarn.application.name=cdctest -s hdfs://master-node:50070/user/root/checkpoints/7a58042487da30bbc2b9cbcf28d5a2cb/chk-1 -Dclient.timeout=600s -c demo.MysqlCDCDemo flink_work-1.1.jar
+ *
+ * ## kafka
+ * kafka-console-consumer.sh --bootstrap-server master-node:9092 --from-beginning --topic cdctest
  */
 object MysqlCDCDemo {
   //  val LOG: Logger = LoggerFactory.getLogger(getClass)
@@ -49,7 +52,7 @@ object MysqlCDCDemo {
       .port(conf.getInt("mysql.port"))
       .databaseList(conf.getString("mysql.database"))
       .tableList(conf.getString("mysql.table"))
-      //      .scanNewlyAddedTableEnabled(true)
+      .scanNewlyAddedTableEnabled(true)
       .username(conf.getString("mysql.username"))
       .password(conf.getString("mysql.password"))
       .startupOptions(StartupOptions.initial())

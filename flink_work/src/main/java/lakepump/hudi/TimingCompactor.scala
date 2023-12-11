@@ -87,8 +87,17 @@ object TimingCompactor {
             val conf = FlinkCompactionConfig.toFlinkConfig(cfg)
             val runnableTask: Runnable = () => {
               try {
+                var err = false
                 val service = new AsyncCompactionService(cfg, conf)
-                new HoodieFlinkCompactor(service).start(cfg.serviceMode)
+                try {
+                  new HoodieFlinkCompactor(service).start(cfg.serviceMode)
+                } catch {
+                  case e: Exception =>
+                    LOG.error("Error in compaction task", e)
+                    err = true
+                } finally {
+                  service.shutdownAsyncService(err)
+                }
               } catch {
                 case e: Exception =>
                   LOG.error("Error in compaction task", e)
