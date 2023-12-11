@@ -15,18 +15,6 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import lakepump.kafka.{KafkaUtils, MyKeySerializationSchema, MyShardPartitioner, MyValueSerializationSchema}
 import lakepump.mysql.JsonDeserializationSchema
 
-/**
- * ## start app in yarn
- * flink run-application -t yarn-application -Dclient.timeout=600s -Dparallelism.default=1 -Dtaskmanager.numberOfTaskSlots=1 \
- * -Dtaskmanager.memory.process.size=1gb -Djobmanager.memory.process.size=1gb -Dtaskmanager.memory.managed.fraction=0.1 \
- * -Dyarn.application.name=cdc_demo -c demo.MysqlCDCDemo flink_work-1.1.jar
- *
- * ## recover from checkpoint
- * flink run-application -t yarn-application -Dyarn.application.name=cdctest -s hdfs://master-node:50070/user/root/checkpoints/7a58042487da30bbc2b9cbcf28d5a2cb/chk-1 -Dclient.timeout=600s -c demo.MysqlCDCDemo flink_work-1.1.jar
- *
- * ## kafka
- * kafka-console-consumer.sh --bootstrap-server master-node:9092 --from-beginning --topic cdctest
- */
 object MysqlCDCDemo {
   //  val LOG: Logger = LoggerFactory.getLogger(getClass)
   val topic = "cdctest"

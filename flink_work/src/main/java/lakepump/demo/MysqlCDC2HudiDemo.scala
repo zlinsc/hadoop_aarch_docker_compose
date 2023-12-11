@@ -50,17 +50,6 @@ import java.time.ZoneId
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 
-/**
- * flink run-application -t yarn-application \
-  -Dclassloader.check-leaked-classloader=false \
-  -Dclient.timeout=600s -Dtaskmanager.slot.timeout=300s -Dakka.ask.timeout=300s \
-  -Dyarn.application.name=cdc2hudi -Dyarn.application.queue=default \
-  -Djobmanager.memory.process.size=1gb -Dtaskmanager.numberOfTaskSlots=1 -Dparallelism.default=1 \
-  -Dtaskmanager.memory.process.size=1gb -Dtaskmanager.memory.managed.fraction=0.1 -Dtaskmanager.memory.network.fraction=0.1 \
-  -c lakepump.demo.MysqlCDC2HudiDemo flink_work-1.3.jar dbInstance=mysql2 serverId=5611-5614 sharding=0 appName=cdc2hudi \
-  dbTables=test_db.cdc_order2 \
-  buckets=2
- */
 object MysqlCDC2HudiDemo {
   val LOG: Logger = LoggerFactory.getLogger(getClass)
 
@@ -138,7 +127,6 @@ object MysqlCDC2HudiDemo {
     val password = conf.getString("%s.password".format(dbInstance))
     val group = conf.getConfigList("%s.instances".format(dbInstance)).asScala
     val g = group(sharding.toInt)
-    val timeZone = "Asia/Shanghai"
     val host = g.getString("hostname")
     val port = g.getInt("port")
     val dbPostfix = g.getStringList("dbPostfix").asScala
@@ -171,7 +159,6 @@ object MysqlCDC2HudiDemo {
       .scanNewlyAddedTableEnabled(true)
       .debeziumProperties(MyDebeziumProps.getHudiProps)
       .startupOptions(startup)
-      .serverTimeZone(timeZone)
 
     //// hudi bucket config
     val buckets = argsMap(SET_BUCKETS).split(",")
@@ -221,7 +208,6 @@ object MysqlCDC2HudiDemo {
       .scanNewlyAddedTableEnabled(true)
       .debeziumProperties(MyDebeziumProps.getHudiProps)
       .startupOptions(startup)
-      .serverTimeZone(timeZone)
       .deserializer(new DebeziumDeserializationSchema[RecPack] {
         override def deserialize(sourceRecord: SourceRecord, out: Collector[RecPack]): Unit = {
           val topic = sourceRecord.topic()
@@ -243,7 +229,7 @@ object MysqlCDC2HudiDemo {
             if (opField != null) {
               val fullName = "%s.%s".format(db, table)
               val conv = RowDataDeserializationRuntimeConverter.createConverter(checkNotNull(tableRowMap(fullName)._2),
-                ZoneId.of(timeZone), new ShardDeserializationRuntimeConverterFactory(sharding))
+                ZoneId.of("UTC"), new ShardDeserializationRuntimeConverterFactory(sharding))
 
               val op = value.getString(opField.name)
               if (op == "c" || op == "r") {

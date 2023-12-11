@@ -123,7 +123,6 @@ object MysqlCDC2Hudi {
     val password = conf.getString("%s.password".format(dbInstance))
     val group = conf.getConfigList("%s.instances".format(dbInstance)).asScala
     val g = group(sharding.toInt)
-    val timeZone = "Asia/Shanghai"
     val host = g.getString("hostname")
     val port = g.getInt("port")
     val dbPostfix = g.getStringList("dbPostfix").asScala
@@ -156,7 +155,6 @@ object MysqlCDC2Hudi {
       .scanNewlyAddedTableEnabled(true)
       .debeziumProperties(MyDebeziumProps.getHudiProps)
       .startupOptions(startup)
-      .serverTimeZone(timeZone)
 
     //// hudi bucket config
     val buckets = argsMap(SET_BUCKETS).split(",")
@@ -205,7 +203,6 @@ object MysqlCDC2Hudi {
       .scanNewlyAddedTableEnabled(true)
       .debeziumProperties(MyDebeziumProps.getHudiProps)
       .startupOptions(startup)
-      .serverTimeZone(timeZone)
       .deserializer(new DebeziumDeserializationSchema[RecPack] {
         override def deserialize(sourceRecord: SourceRecord, out: Collector[RecPack]): Unit = {
           val topic = sourceRecord.topic()
@@ -227,7 +224,7 @@ object MysqlCDC2Hudi {
             if (opField != null) {
               val fullName = "%s.%s".format(db, table)
               val conv = RowDataDeserializationRuntimeConverter.createConverter(checkNotNull(tableRowMap(fullName)._2),
-                ZoneId.of(timeZone), new ShardDeserializationRuntimeConverterFactory(sharding))
+                ZoneId.of("UTC"), new ShardDeserializationRuntimeConverterFactory(sharding))
 
               val op = value.getString(opField.name)
               if (op == "c" || op == "r") {
@@ -267,7 +264,7 @@ object MysqlCDC2Hudi {
 
         override def getProducedType: TypeInformation[RecPack] = TypeInformation.of(classOf[RecPack])
       }).build()
-    val rootParallel = 4
+    val rootParallel = 2
     val src = env.fromSource(mysqlSource, WatermarkStrategy.noWatermarks[RecPack](), "Mysql CDC Source")
       .setParallelism(rootParallel).uid("src")
 

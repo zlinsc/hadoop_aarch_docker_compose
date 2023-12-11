@@ -2,6 +2,8 @@ package lakepump.demo
 
 import com.alibaba.fastjson2.JSONObject
 import com.typesafe.config.ConfigFactory
+import lakepump.cdc.RowUtils
+import lakepump.kafka.KafkaUtils
 import org.apache.flink.api.common.eventtime.WatermarkStrategy
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.connector.kafka.source.KafkaSource
@@ -17,7 +19,7 @@ import org.apache.flink.util.Collector
 import org.apache.hudi.client.transaction.BucketIndexConcurrentFileWritesConflictResolutionStrategy
 import org.apache.hudi.common.config.LockConfiguration
 import org.apache.hudi.common.model.{HoodieTableType, WriteOperationType}
-import org.apache.hudi.config.{HoodieCleanConfig, HoodieIndexConfig, HoodieLayoutConfig, HoodieLockConfig, HoodieWriteConfig}
+import org.apache.hudi.config._
 import org.apache.hudi.configuration.FlinkOptions
 import org.apache.hudi.hive.transaction.lock.HiveMetastoreBasedLockProvider
 import org.apache.hudi.index.HoodieIndex.BucketIndexEngineType
@@ -25,24 +27,11 @@ import org.apache.hudi.index.HoodieIndex.IndexType.BUCKET
 import org.apache.hudi.table.storage.HoodieStorageLayout
 import org.apache.hudi.util.HoodiePipeline
 import org.apache.kafka.clients.consumer.ConsumerRecord
-import lakepump.cdc.RowUtils
-import lakepump.kafka.KafkaUtils
 
 import java.sql.{Connection, DriverManager, ResultSet}
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
 
-/**
- * ## start app in yarn
- * flink run-application -t yarn-application -Dclient.timeout=600s -Dparallelism.default=1 -Dtaskmanager.numberOfTaskSlots=1 \
- * -Dtaskmanager.memory.process.size=1gb -Djobmanager.memory.process.size=1gb -Dtaskmanager.memory.managed.fraction=0.1 -Dclassloader.check-leaked-classloader=false \
- * -Dyarn.application.name=hudi_demo -c demo.HudiDemo flink_work-1.1.jar
- *
- * ## offline compaction
- * flink run-application -t yarn-application -Dclient.timeout=600s -Dparallelism.default=1 -Dtaskmanager.numberOfTaskSlots=1 \
-  -Dtaskmanager.memory.process.size=1gb -Djobmanager.memory.process.size=1gb -Dtaskmanager.memory.managed.fraction=0.1 -Dclassloader.check-leaked-classloader=false \
-  -Dyarn.application.name=hudi_demo_compaction -c org.apache.hudi.sink.compact.HoodieFlinkCompactor flink/lib/hudi-flink1.17-bundle-mod-0.14.0.jar --path hdfs://master-node:50070/tmp/cdc_order_hudi
- */
 object HudiDemo {
 
   def main(args: Array[String]): Unit = {
@@ -165,8 +154,8 @@ object HudiDemo {
 
       FlinkOptions.COMPACTION_SCHEDULE_ENABLED.key() -> "true",
       FlinkOptions.COMPACTION_ASYNC_ENABLED.key() -> "false",
-//      FlinkOptions.COMPACTION_TRIGGER_STRATEGY.key() -> "num_commits",
-//      FlinkOptions.COMPACTION_DELTA_COMMITS.key() -> "2",
+      //      FlinkOptions.COMPACTION_TRIGGER_STRATEGY.key() -> "num_commits",
+      //      FlinkOptions.COMPACTION_DELTA_COMMITS.key() -> "2",
       FlinkOptions.COMPACTION_TRIGGER_STRATEGY.key() -> FlinkOptions.NUM_OR_TIME,
       FlinkOptions.COMPACTION_DELTA_COMMITS.key() -> "2",
       FlinkOptions.COMPACTION_DELTA_SECONDS.key() -> "300",

@@ -53,10 +53,10 @@ class MySqlHudiTimeConverter extends CustomConverter[SchemaBuilder, RelationalCo
   private def convertDate(input: Any): String = {
     input match {
       case date: LocalDate =>
-        dateFormatter.format(date).replaceAll("T", " ")
+        dateFormatter.format(date) + "Z"
       case integer: Integer =>
         val date = LocalDate.ofEpochDay(integer.toLong)
-        dateFormatter.format(date).replaceAll("T", " ")
+        dateFormatter.format(date) + "Z"
       case _ => null
     }
   }
@@ -67,7 +67,7 @@ class MySqlHudiTimeConverter extends CustomConverter[SchemaBuilder, RelationalCo
         val seconds = duration.getSeconds
         val nano = duration.getNano
         val time = LocalTime.ofSecondOfDay(seconds).withNano(nano)
-        timeFormatter.format(time).replaceAll("T", " ")
+        timeFormatter.format(time) + "Z"
       case _ => null
     }
   }
@@ -75,11 +75,13 @@ class MySqlHudiTimeConverter extends CustomConverter[SchemaBuilder, RelationalCo
   private def convertDateTime(input: Any): String = {
     input match {
       case ts: Timestamp =>
-//        timestampFormatter.format(ts.toLocalDateTime).replaceAll("T", " ")
-        timestampFormatter.format(ts.toLocalDateTime) + "Z"
+        val zonedDateTime = ZonedDateTime.ofInstant(ts.toInstant, ZoneId.of("UTC"))
+        val ori = timestampFormatter.format(zonedDateTime)
+        ori.substring(0, ori.indexOf("["))
       case dateTime: LocalDateTime =>
-//        datetimeFormatter.format(dateTime).replaceAll("T", " ")
-        datetimeFormatter.format(dateTime) + "Z"
+        val zonedDateTime = dateTime.atZone(ZoneId.of("UTC"))
+        val ori = datetimeFormatter.format(zonedDateTime)
+        ori.substring(0, ori.indexOf("["))
       case _ =>
         null
     }
@@ -91,11 +93,13 @@ class MySqlHudiTimeConverter extends CustomConverter[SchemaBuilder, RelationalCo
         // snapshot stage 8 hours later than db
         val localDateTime = ts.toLocalDateTime
         val zonedDateTime = localDateTime.atZone(timestampZoneId).withZoneSameInstant(ZoneId.of("UTC"))
-        timestampFormatter.format(zonedDateTime.toLocalDateTime).replaceAll("T", " ")
+        val ori = timestampFormatter.format(zonedDateTime)
+        ori.substring(0, ori.indexOf("["))
       case zdt: ZonedDateTime =>
         // incremental stage 8 hours earlier than db
-        val localDateTime = zdt.withZoneSameInstant(timestampZoneId).toLocalDateTime
-        timestampFormatter.format(localDateTime).replaceAll("T", " ")
+        val zonedDateTime = zdt.withZoneSameInstant(timestampZoneId)
+        val ori = timestampFormatter.format(zonedDateTime)
+        ori.substring(0, ori.indexOf("["))
       case _ =>
         null
     }

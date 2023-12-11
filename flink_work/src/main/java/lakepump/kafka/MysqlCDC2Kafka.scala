@@ -163,7 +163,11 @@ object MysqlCDC2Kafka {
     val tablePkMap = mutable.Map[String, Seq[String]]()
     tblListWithPostfix.foreach(x => {
       val arr = x.split("\\.")
-      val dbTable = new TableId(arr(0), null, arr(1))
+      val targetDB = arr(0)
+      var targetTable = arr(1)
+      val specSymb = targetTable.indexOf("[") // 将acct_item_total_month_[0-9]{6}转为acct_item_total_month
+      targetTable = if (specSymb == -1) targetTable else targetTable.substring(0, specSymb - 1)
+      val dbTable = new TableId(targetDB, null, targetTable)
       // return RowType
       if (tableSchemaMap.contains(dbTable)) {
         val t = tableSchemaMap(dbTable).getTable
@@ -259,7 +263,7 @@ object MysqlCDC2Kafka {
 
         override def getProducedType: TypeInformation[RecPack] = TypeInformation.of(classOf[RecPack])
       }).build()
-    val rootParallel = 4
+    val rootParallel = 2
     val src = env.fromSource(mysqlSource, WatermarkStrategy.noWatermarks[RecPack](), "Mysql CDC Source")
       .setParallelism(rootParallel).uid("src")
 
