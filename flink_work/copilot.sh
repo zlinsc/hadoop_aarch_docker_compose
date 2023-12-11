@@ -2,16 +2,13 @@
 export HADOOP_CLASSPATH=`hadoop classpath`
 yarn_resource_web="flink-cdc-003.nm.ctdcp.com:8088"
 
-################### shutdown job
+################### backup checkpoint
 function backup_jobid_cache() {
   local APP_NAME=$1
   hadoop fs -get -f hdfs://ctyunns/user/ads/flink/jobid_cache/$APP_NAME
 }
-for ((i = 0; i < 8; i++)); do
-#  backup_jobid_cache cdc2kafka_mysql_crm_sharding_$i
-  backup_jobid_cache cdc2hudi_mysql_crm_sharding_$i
-done
 
+################### shutdown job
 function get_appid_using_name() {
   local APP_NAME=$1
   for ((i = 0; i < 1; i++)); do
@@ -31,10 +28,6 @@ function shutdown() {
     curl -s $url
   fi
 }
-for ((i = 0; i < 8; i++)); do
-#  shutdown cdc2kafka_mysql_crm_sharding_$i
-  shutdown cdc2hudi_mysql_crm_sharding_$i
-done
 
 ################### kafka
 function run2kafka() {
@@ -53,14 +46,6 @@ function run2kafka() {
   dbTables=order.inner_ord_offer_inst_pay_info,order.master_order,order.master_order_his \
   buckets=1,1,13
 }
-run2kafka mysql_crm 0 ads
-run2kafka mysql_crm 1 ads
-run2kafka mysql_crm 2 ads
-run2kafka mysql_crm 3 ads
-run2kafka mysql_crm 4 ads
-run2kafka mysql_crm 5 ads
-run2kafka mysql_crm 6 ads
-run2kafka mysql_crm 7 ads
 
 ################### hudi
 function run2hudi() {
@@ -81,23 +66,6 @@ function run2hudi() {
 #  dbTables=cust.prod_spec_inst,cust.prod_spec_inst_attr,cust.prod_spec_res_inst,order.inner_ord_offer_inst_pay_info_his,order.inner_ord_prod_spec_inst_his,order.master_order_attr_his,order.master_order_his,order.ord_prod_spec_inst_his,order.order_attr_his,order.order_item_his,order.order_pay_info_his,order.inner_order_attr_his,order.inner_ord_offer_inst_his,order.inner_order_meta_his,cust.offer_prod_inst_rel,cust.offer_price_plan_inst,cust.account_attr,cust.project_obj_relation \
 #  buckets=23,280,23,20,24,93,13,22,80,44,3,104,24,15,23,17,23,10
 }
-run2hudi mysql_crm 0 dws
-run2hudi mysql_crm 1 dws
-run2hudi mysql_crm 2 dws
-run2hudi mysql_crm 3 dws
-run2hudi mysql_crm 4 dws
-run2hudi mysql_crm 5 dws
-run2hudi mysql_crm 6 dws
-run2hudi mysql_crm 7 dws
-
-run2hudi mysql_account 0 dws
-run2hudi mysql_account 1 dws
-run2hudi mysql_account 2 dws
-run2hudi mysql_account 3 dws
-run2hudi mysql_account 4 dws
-run2hudi mysql_account 5 dws
-run2hudi mysql_account 6 dws
-run2hudi mysql_account 7 dws
 
 function compact() {
 ./flink-1.17.0-x/bin/flink run-application -t yarn-application -Dyarn.provided.lib.dirs=hdfs://ctyunns/user/ads/flink/lib2 \
@@ -113,4 +81,44 @@ function compact() {
   dbTables=cust.prod_spec_inst,cust.prod_spec_inst_attr,cust.prod_spec_res_inst,order.inner_ord_offer_inst_pay_info_his,order.inner_ord_prod_spec_inst_his,order.master_order_attr_his,order.master_order_his,order.ord_prod_spec_inst_his,order.order_attr_his,order.order_item_his,order.order_pay_info_his,order.inner_order_attr_his,order.inner_ord_offer_inst_his,order.inner_order_meta_his,cust.offer_prod_inst_rel,cust.offer_price_plan_inst,cust.account_attr,cust.project_obj_relation \
   buckets=23,280,23,20,24,93,13,22,80,44,3,104,24,15,23,17,23,10
 }
-compact
+
+#################################
+# TODO >>>>>>>>>>>>>>
+for ((i = 0; i < 8; i++)); do
+  backup_jobid_cache cdc2kafka_mysql_crm_sharding_$i
+#  backup_jobid_cache cdc2hudi_mysql_crm_sharding_$i
+done
+
+for ((i = 0; i < 8; i++)); do
+  shutdown cdc2kafka_mysql_crm_sharding_$i
+#  shutdown cdc2hudi_mysql_crm_sharding_$i
+done
+
+run2kafka mysql_crm 0 ads
+run2kafka mysql_crm 1 ads
+run2kafka mysql_crm 2 ads
+run2kafka mysql_crm 3 ads
+run2kafka mysql_crm 4 ads
+run2kafka mysql_crm 5 ads
+run2kafka mysql_crm 6 ads
+run2kafka mysql_crm 7 ads
+
+#run2hudi mysql_crm 0 dws
+#run2hudi mysql_crm 1 dws
+#run2hudi mysql_crm 2 dws
+#run2hudi mysql_crm 3 dws
+#run2hudi mysql_crm 4 dws
+#run2hudi mysql_crm 5 dws
+#run2hudi mysql_crm 6 dws
+#run2hudi mysql_crm 7 dws
+#
+#run2hudi mysql_account 0 dws
+#run2hudi mysql_account 1 dws
+#run2hudi mysql_account 2 dws
+#run2hudi mysql_account 3 dws
+#run2hudi mysql_account 4 dws
+#run2hudi mysql_account 5 dws
+#run2hudi mysql_account 6 dws
+#run2hudi mysql_account 7 dws
+#
+#compact
