@@ -89,8 +89,11 @@ function run2hudi_crm() {
   -Djobmanager.memory.process.size=8gb -Dtaskmanager.numberOfTaskSlots=4 -Dparallelism.default=4 \
   -Dtaskmanager.memory.process.size=32gb -Dtaskmanager.memory.managed.fraction=0.2 -Dtaskmanager.memory.network.fraction=0.1 \
   -c lakepump.hudi.MysqlCDC2Hudi flink_work-1.3.jar dbInstance=mysql_crm serverId=5611-5614 sharding=$1 appName=$appName \
-  dbTables=cust.prod_spec_inst,cust.prod_spec_inst_attr,cust.prod_spec_res_inst,order.inner_ord_offer_inst_pay_info_his,order.inner_ord_prod_spec_inst_his,order.master_order_attr_his,order.master_order_his,order.ord_prod_spec_inst_his,order.order_attr_his,order.order_item_his,order.order_pay_info_his,order.inner_order_attr_his,order.inner_ord_offer_inst_his,order.inner_order_meta_his,cust.offer_prod_inst_rel,cust.offer_price_plan_inst,cust.account_attr,cust.project_obj_relation \
-  buckets=23,280,23,20,24,93,13,22,80,44,3,104,24,15,23,17,23,10
+  dbTables=cust.prod_spec_inst,cust.prod_spec_inst_attr,cust.prod_spec_res_inst,order.inner_ord_offer_inst_pay_info_his,order.inner_ord_prod_spec_inst_his,order.master_order_attr_his,order.master_order_his,order.ord_prod_spec_inst_his,order.order_attr_his,order.inner_order_attr_his,order.inner_ord_offer_inst_his,order.inner_order_meta_his,cust.offer_prod_inst_rel,cust.offer_price_plan_inst,cust.account_attr,cust.project_obj_relation \
+  buckets=23,280,23,20,24,93,13,22,80,104,24,15,23,17,23,10
+#  dbTables=cust.prod_spec_inst,cust.prod_spec_inst_attr,cust.prod_spec_res_inst,order.inner_ord_offer_inst_pay_info_his,order.inner_ord_prod_spec_inst_his,order.master_order_attr_his,order.master_order_his,order.ord_prod_spec_inst_his,order.order_attr_his,order.order_item_his,order.order_pay_info_his,order.inner_order_attr_his,order.inner_ord_offer_inst_his,order.inner_order_meta_his,cust.offer_prod_inst_rel,cust.offer_price_plan_inst,cust.account_attr,cust.project_obj_relation \
+#  buckets=23,280,23,20,24,93,13,22,80,44,3,104,24,15,23,17,23,10
+#  minusDbTables=order.order_item_his,order.order_pay_info_his
 }
 
 function run2hudi_account() {
@@ -164,31 +167,33 @@ function hudi_compact() {
 
 #################################
 # TODO >>>>>>>>>>>>>>
-my_list=(0 1 2 3 4 5 6 7)
-#my_list=(0)
+#my_list=(0 1 2 3 4 5 6 7)
+my_list=(0)
 for i in "${my_list[@]}"; do
 #  shutdown_and_clean cdc2kafka_mysql_crm_sharding_$i
 #  shutdown_and_clean cdc2kafka_mysql_account_sharding_$i
-  shutdown_and_clean cdc2hudi_mysql_crm_sharding_$i
+#  shutdown_and_clean cdc2hudi_mysql_crm_sharding_$i
 #  shutdown_and_clean cdc2hudi_mysql_account_sharding_$i
 
 #  run2kafka_crm $i
 #  run2kafka_account $i
-#  run2hudi_crm $i
+  run2hudi_crm $i
 #  run2hudi_account $i
 done
 
 #hudi_compact
 
-./flink-1.17.0-x/bin/flink run-application -t yarn-application -Dyarn.provided.lib.dirs=hdfs://ctyunns/user/ads/flink/lib2 \
-  -Dsecurity.kerberos.login.use-ticket-cache=false -Dsecurity.kerberos.login.contexts=Client,KafkaClient \
-  -Dsecurity.kerberos.login.principal=ads/hdp-tmp007.nm.ctdcp.com@BIGDATA.CHINATELECOM.CN \
-  -Dsecurity.kerberos.login.keytab=/etc/security/keytabs/ads.keytab \
-  -Dclassloader.check-leaked-classloader=false \
-  -Djobmanager.archive.fs.dir=hdfs://ctyunns/flink-history/realjob -Dhistoryserver.archive.fs.dir=hdfs://ctyunns/flink-history/realjob \
-  -Dclient.timeout=600s -Dtaskmanager.slot.timeout=300s -Dakka.ask.timeout=300s \
-  -Dyarn.application.name=consume_test -Dyarn.application.queue=ads \
-  -Djobmanager.memory.process.size=1gb -Dtaskmanager.numberOfTaskSlots=1 -Dparallelism.default=1 \
-  -Dtaskmanager.memory.process.size=1gb -Dtaskmanager.memory.managed.fraction=0.1 -Dtaskmanager.memory.network.fraction=0.1 \
-  -c lakepump.kafka.TestCDCConsumer flink_work-1.3.jar acctdb.acct_item_total_month_[0-9]{6} 2023-12-11_00:00:00 t_acctdb_acct_item_total_month
+#################################
+# DEBUG
+#./flink-1.17.0-x/bin/flink run-application -t yarn-application -Dyarn.provided.lib.dirs=hdfs://ctyunns/user/ads/flink/lib2 \
+#  -Dsecurity.kerberos.login.use-ticket-cache=false -Dsecurity.kerberos.login.contexts=Client,KafkaClient \
+#  -Dsecurity.kerberos.login.principal=ads/hdp-tmp007.nm.ctdcp.com@BIGDATA.CHINATELECOM.CN \
+#  -Dsecurity.kerberos.login.keytab=/etc/security/keytabs/ads.keytab \
+#  -Dclassloader.check-leaked-classloader=false \
+#  -Djobmanager.archive.fs.dir=hdfs://ctyunns/flink-history/realjob -Dhistoryserver.archive.fs.dir=hdfs://ctyunns/flink-history/realjob \
+#  -Dclient.timeout=600s -Dtaskmanager.slot.timeout=300s -Dakka.ask.timeout=300s \
+#  -Dyarn.application.name=consume_test -Dyarn.application.queue=ads \
+#  -Djobmanager.memory.process.size=1gb -Dtaskmanager.numberOfTaskSlots=1 -Dparallelism.default=1 \
+#  -Dtaskmanager.memory.process.size=1gb -Dtaskmanager.memory.managed.fraction=0.1 -Dtaskmanager.memory.network.fraction=0.1 \
+#  -c lakepump.kafka.TestCDCConsumer flink_work-1.3.jar acctdb.acct_item_total_month_[0-9]{6} 2023-12-11_00:00:00 t_acctdb_acct_item_total_month
 

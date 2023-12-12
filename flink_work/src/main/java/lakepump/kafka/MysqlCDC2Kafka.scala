@@ -2,15 +2,9 @@ package lakepump.kafka
 
 import com.alibaba.fastjson2.JSONObject
 import com.typesafe.config.ConfigFactory
-import com.ververica.cdc.connectors.mysql.debezium.DebeziumUtils
-import com.ververica.cdc.connectors.mysql.schema.MySqlTypeUtils
 import com.ververica.cdc.connectors.mysql.source.MySqlSource
-import com.ververica.cdc.connectors.mysql.source.config.MySqlSourceConfigFactory
-import com.ververica.cdc.connectors.mysql.source.utils.TableDiscoveryUtils
 import com.ververica.cdc.connectors.mysql.table.StartupOptions
 import com.ververica.cdc.debezium.DebeziumDeserializationSchema
-import io.debezium.connector.mysql.MySqlPartition
-import io.debezium.relational.TableId
 import lakepump.hadoop.HadoopUtils
 import lakepump.mysql.MyDebeziumProps
 import org.apache.flink.api.common.eventtime.WatermarkStrategy
@@ -27,14 +21,13 @@ import org.apache.flink.streaming.api.datastream.DataStream
 import org.apache.flink.streaming.api.environment.CheckpointConfig.ExternalizedCheckpointCleanup
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.flink.streaming.api.functions.{KeyedProcessFunction, ProcessFunction}
-import org.apache.flink.table.types.logical.RowType
 import org.apache.flink.util.{Collector, OutputTag}
 import org.apache.kafka.connect.data.Struct
 import org.apache.kafka.connect.source.SourceRecord
 import org.slf4j.{Logger, LoggerFactory}
 
-import scala.collection.mutable
 import scala.collection.JavaConverters._
+import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 object MysqlCDC2Kafka {
@@ -47,6 +40,8 @@ object MysqlCDC2Kafka {
   val SET_DB_TABLES = "dbTables"
   val SET_BUCKETS = "buckets"
   val SET_APP_NAME = "appName"
+
+  val BINLOG_PARALLEL = 4
 
   def main(args: Array[String]): Unit = {
     //// extract argsMap
@@ -225,7 +220,7 @@ object MysqlCDC2Kafka {
 
         override def getProducedType: TypeInformation[RecPack] = TypeInformation.of(classOf[RecPack])
       }).build()
-    val rootParallel = 2
+    val rootParallel = BINLOG_PARALLEL
     val src = env.fromSource(mysqlSource, WatermarkStrategy.noWatermarks[RecPack](), "Mysql CDC Source")
       .setParallelism(rootParallel).uid("src")
 

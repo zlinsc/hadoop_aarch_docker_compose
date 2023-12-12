@@ -45,6 +45,7 @@ import org.slf4j.{Logger, LoggerFactory}
 import java.time.ZoneId
 import scala.collection.JavaConverters._
 import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 
 object MysqlCDC2Hudi {
   val LOG: Logger = LoggerFactory.getLogger(getClass)
@@ -54,8 +55,11 @@ object MysqlCDC2Hudi {
   val SET_SERVER_ID = "serverId"
   val SET_SHARDING = "sharding"
   val SET_DB_TABLES = "dbTables"
+  val SET_MINUS_DB_TABLES = "minusDbTables"
   val SET_BUCKETS = "buckets"
   val SET_APP_NAME = "appName"
+
+  val BINLOG_PARALLEL = 4
 
   def main(args: Array[String]): Unit = {
     //// extract argsMap
@@ -66,7 +70,7 @@ object MysqlCDC2Hudi {
       if (arr.size == 2) argsMap += (arr(0) -> arr(1))
       else throw new Exception("args error: " + args.mkString(";"))
     })
-    val conf = ConfigFactory.load("settings_online.conf")
+    val conf = ConfigFactory.load("settings_v2_online.conf")
     val dbInstance = argsMap(SET_DB_INSTANCE)
     val sharding = argsMap(SET_SHARDING)
     val appName = argsMap(SET_APP_NAME)
@@ -123,12 +127,18 @@ object MysqlCDC2Hudi {
     val password = conf.getString("%s.password".format(dbInstance))
     val group = conf.getConfigList("%s.instances".format(dbInstance)).asScala
     val g = group(sharding.toInt)
+    val timeZone = "Asia/Shanghai"
     val host = g.getString("hostname")
     val port = g.getInt("port")
     val dbPostfix = g.getStringList("dbPostfix").asScala
     val dbList = mutable.ArrayBuffer[String]()
     val tables = argsMap(SET_DB_TABLES) // db.table
-    val tblList = tables.split(",")
+    val tblRawList = tables.split(",")
+    val minusTables = argsMap.getOrElse(SET_MINUS_DB_TABLES, "")
+    val minusTablesSet = minusTables.split(",").toSet
+    val tblList = ArrayBuffer[String]()
+    tblRawList.foreach(x => if (!minusTablesSet.contains(x)) tblList += x)
+    println("actual tables: " + tblList.mkString(";"))
     val tblListWithPostfix = tblList.flatMap(t => {
       val arr = t.split("\\.")
       if (arr.length == 2) {
@@ -155,12 +165,13 @@ object MysqlCDC2Hudi {
       .scanNewlyAddedTableEnabled(true)
       .debeziumProperties(MyDebeziumProps.getHudiProps)
       .startupOptions(startup)
+      .serverTimeZone(timeZone)
 
     //// hudi bucket config
     val buckets = argsMap(SET_BUCKETS).split(",")
-    if (buckets.length != tblList.length) throw new Exception("buckets list size is not equal to tables list")
+    if (buckets.length != tblRawList.length) throw new Exception("buckets list size is not equal to tables list")
     val bucketMap = mutable.Map[String, Int]()
-    for (i <- 0 until tblList.size) bucketMap += (tblList(i) -> buckets(i).toInt)
+    for (i <- tblRawList.indices) bucketMap += (tblRawList(i) -> buckets(i).toInt)
 
     //// obtain table schema first time
     val sourceConfig = sourceConfigFactory.createConfig(0)
@@ -203,6 +214,7 @@ object MysqlCDC2Hudi {
       .scanNewlyAddedTableEnabled(true)
       .debeziumProperties(MyDebeziumProps.getHudiProps)
       .startupOptions(startup)
+      .serverTimeZone(timeZone)
       .deserializer(new DebeziumDeserializationSchema[RecPack] {
         override def deserialize(sourceRecord: SourceRecord, out: Collector[RecPack]): Unit = {
           val topic = sourceRecord.topic()
@@ -264,7 +276,7 @@ object MysqlCDC2Hudi {
 
         override def getProducedType: TypeInformation[RecPack] = TypeInformation.of(classOf[RecPack])
       }).build()
-    val rootParallel = 2
+    val rootParallel = BINLOG_PARALLEL
     val src = env.fromSource(mysqlSource, WatermarkStrategy.noWatermarks[RecPack](), "Mysql CDC Source")
       .setParallelism(rootParallel).uid("src")
 
