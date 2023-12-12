@@ -35,6 +35,7 @@ import org.slf4j.{Logger, LoggerFactory}
 
 import scala.collection.mutable
 import scala.collection.JavaConverters._
+import scala.collection.mutable.ArrayBuffer
 
 object MysqlCDC2Kafka {
   val LOG: Logger = LoggerFactory.getLogger(getClass)
@@ -56,7 +57,7 @@ object MysqlCDC2Kafka {
       if (arr.size == 2) argsMap += (arr(0) -> arr(1))
       else throw new Exception("args error: " + args.mkString(";"))
     })
-    val conf = ConfigFactory.load("settings_online.conf")
+    val conf = ConfigFactory.load("settings_v2_online.conf")
     val dbInstance = argsMap(SET_DB_INSTANCE)
     val sharding = argsMap(SET_SHARDING)
     val appName = argsMap(SET_APP_NAME)
@@ -120,11 +121,16 @@ object MysqlCDC2Kafka {
     val dbList = mutable.ArrayBuffer[String]()
     val tables = argsMap(SET_DB_TABLES) // db.table
     val tblList = tables.split(",")
+    val targetTblList = ArrayBuffer[String]()
     val tblListWithPostfix = tblList.flatMap(t => {
       val arr = t.split("\\.")
       if (arr.length == 2) {
         val db = arr(0)
         val tbl = arr(1)
+        val specSymb = tbl.indexOf("[") // 将acct_item_total_month_[0-9]{6}转为acct_item_total_month
+        val targetTable = if (specSymb == -1) tbl else tbl.substring(0, specSymb - 1)
+        targetTblList += db + "." + targetTable
+
         dbPostfix.map(postfix => {
           val dbPostfix = db + postfix
           dbList += dbPostfix
@@ -132,57 +138,13 @@ object MysqlCDC2Kafka {
         })
       } else throw new Exception("tables setting must be formatted like db.table")
     })
-
-    val sourceConfigFactory = new MySqlSourceConfigFactory()
-      .serverId(serverId)
-      .hostname(host)
-      .port(port)
-      .databaseList(dbList: _*)
-      .tableList(tblListWithPostfix: _*)
-      .username(username)
-      .password(password)
-      .closeIdleReaders(false)
-      .includeSchemaChanges(true)
-      .scanNewlyAddedTableEnabled(true)
-      .debeziumProperties(MyDebeziumProps.getProps)
-      .startupOptions(startup)
-      .serverTimeZone(timeZone)
+    println(tblListWithPostfix.mkString(";"))
 
     //// bucket config
     val buckets = argsMap(SET_BUCKETS).split(",")
-    if (buckets.length != tblList.length) throw new Exception("buckets list size is not equal to tables list")
+    if (buckets.length != targetTblList.length) throw new Exception("buckets list size is not equal to tables list")
     val bucketMap = mutable.Map[String, Int]()
-    for (i <- 0 until tblList.size) bucketMap += (tblList(i) -> buckets(i).toInt)
-
-    //// obtain table schema first time
-    val sourceConfig = sourceConfigFactory.createConfig(0)
-    val partition: MySqlPartition = new MySqlPartition(sourceConfig.getMySqlConnectorConfig.getLogicalName)
-    val jdbc = DebeziumUtils.createMySqlConnection(sourceConfig)
-    val tableSchemaMap = TableDiscoveryUtils.discoverSchemaForCapturedTables(partition, sourceConfig, jdbc).asScala
-    val tableRowMap = mutable.Map[String, (Seq[String], RowType)]()
-    val tablePkMap = mutable.Map[String, Seq[String]]()
-    tblListWithPostfix.foreach(x => {
-      val arr = x.split("\\.")
-      val targetDB = arr(0)
-      var targetTable = arr(1)
-      val specSymb = targetTable.indexOf("[") // 将acct_item_total_month_[0-9]{6}转为acct_item_total_month
-      targetTable = if (specSymb == -1) targetTable else targetTable.substring(0, specSymb - 1)
-      val dbTable = new TableId(targetDB, null, targetTable)
-      // return RowType
-      if (tableSchemaMap.contains(dbTable)) {
-        val t = tableSchemaMap(dbTable).getTable
-        val colsDT = t.columns().asScala.map(x => (x.name(), MySqlTypeUtils.fromDbzColumn(x).getLogicalType))
-        //        colsDT += ((SET_SHARDING, DataTypes.STRING().getLogicalType)) // partition column
-        val rowType = RowType.of(colsDT.map(_._2): _*)
-        val colNames = colsDT.map(_._1)
-        // columns
-        tableRowMap += (x -> (colNames, rowType))
-        // primary key
-        tablePkMap += (x -> t.primaryKeyColumnNames.asScala)
-      } else throw new Exception("%s is not in tableSchemaMap".format(dbTable))
-    })
-    println("pk=" + tablePkMap.mkString(";"))
-    //    println("cols=" + tableRowMap.mkString(";"))
+    for (i <- targetTblList.indices) bucketMap += (targetTblList(i) -> buckets(i).toInt)
 
     //// build source
     case class RecPack(tag: String, key: Int, row: JSONObject)
@@ -268,10 +230,15 @@ object MysqlCDC2Kafka {
       .setParallelism(rootParallel).uid("src")
 
     //// distribute and sink table
-    val tagMap = tblList.map(x => (x, new OutputTag[RecPack](x) {})).toMap
+    val tagMap = targetTblList.map(x => (x, new OutputTag[RecPack](x) {})).toMap
     val mainStream = src.process(new ProcessFunction[RecPack, RecPack] {
       override def processElement(e: RecPack, ctx: ProcessFunction[RecPack, RecPack]#Context, collector: Collector[RecPack]): Unit = {
         if (tagMap.contains(e.tag)) ctx.output(tagMap(e.tag), e)
+        else {
+          val regex = "_\\d+$".r
+          val newTag = regex.replaceAllIn(e.tag, "")
+          if (newTag != e.tag && tagMap.contains(newTag)) ctx.output(tagMap(newTag), e)
+        }
       }
     }).setParallelism(rootParallel).uid("output-tag")
 
@@ -294,9 +261,7 @@ object MysqlCDC2Kafka {
       //// kafka sink
       val targetArr = x.split("\\.")
       val targetDB = targetArr(0)
-      var targetTable = targetArr(1)
-      val specSymb = targetTable.indexOf("[") // 将acct_item_total_month_[0-9]{6}转为acct_item_total_month
-      targetTable = if (specSymb == -1) targetTable else targetTable.substring(0, specSymb - 1)
+      val targetTable = targetArr(1)
       val topic = "t_%s_%s".format(targetDB, targetTable)
       KafkaUtils.createTopic(topic, group.length * dbPostfix.length)
       val sink = KafkaSink.builder()
@@ -311,7 +276,7 @@ object MysqlCDC2Kafka {
         .setTransactionalIdPrefix(System.currentTimeMillis().toString)
         .setKafkaProducerConfig(KafkaUtils.getDefaultProp(true))
         .build()
-      srcByTag.sinkTo(sink).setParallelism(bucketParallel).uid("sink2Kafka:" + x)
+      srcByTag.sinkTo(sink).setParallelism(bucketParallel).uid("sink2Kafka:" + x).name(x)
     }
 
     //// execute

@@ -343,7 +343,7 @@ object MysqlCDC2Hudi {
         .pk(tablePkMap(headTbl): _*)
         //        .partition(SET_SHARDING)
         .options(options)
-      hudiBuilder.sink(srcByTag, false).uid("sink2Hudi:" + x)
+      hudiBuilder.sink(srcByTag, false).uid("sink2Hudi:" + x).name(x)
     }
 
     //// execute

@@ -164,7 +164,7 @@ WORKDIR /home
 
 # docker startup script
 COPY init.sh .
-COPY remote_run.sh .
+COPY flink_work/demo.sh .
 
 # init cmd
 RUN rm /etc/localtime
