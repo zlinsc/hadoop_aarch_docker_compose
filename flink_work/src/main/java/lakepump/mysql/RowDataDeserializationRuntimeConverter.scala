@@ -5,10 +5,12 @@ import com.ververica.cdc.debezium.table._
 import com.ververica.cdc.debezium.utils.TemporalConversions
 import io.debezium.data.VariableScaleDecimal
 import io.debezium.time._
+import lakepump.demo.MysqlCDC2HudiDemo.getClass
 import org.apache.flink.table.data._
 import org.apache.flink.table.types.logical.LogicalTypeRoot._
 import org.apache.flink.table.types.logical.{DecimalType, LogicalType, RowType}
 import org.apache.kafka.connect.data.{Decimal, Schema}
+import org.slf4j.{Logger, LoggerFactory}
 
 import java.math.BigDecimal
 import java.nio.ByteBuffer
@@ -16,6 +18,7 @@ import java.time.{Instant, LocalDateTime, ZoneId}
 import scala.collection.convert.ImplicitConversions.`collection AsScalaIterable`
 
 object RowDataDeserializationRuntimeConverter {
+  val LOG: Logger = LoggerFactory.getLogger(getClass)
 
   /** Creates a runtime converter which is null safe. */
   def createConverter(`type`: LogicalType, serverTimeZone: ZoneId, userDefinedConverterFactory: DeserializationRuntimeConverterFactory) =

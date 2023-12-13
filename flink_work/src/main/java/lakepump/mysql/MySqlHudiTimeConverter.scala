@@ -79,7 +79,7 @@ class MySqlHudiTimeConverter extends CustomConverter[SchemaBuilder, RelationalCo
         val ori = timestampFormatter.format(zonedDateTime)
         ori.substring(0, ori.indexOf("["))
       case dateTime: LocalDateTime =>
-        val zonedDateTime = dateTime.atZone(ZoneId.of("UTC"))
+        val zonedDateTime = dateTime.atZone(timestampZoneId).withZoneSameInstant(ZoneId.of("UTC"))
         val ori = datetimeFormatter.format(zonedDateTime)
         ori.substring(0, ori.indexOf("["))
       case _ =>
@@ -90,13 +90,11 @@ class MySqlHudiTimeConverter extends CustomConverter[SchemaBuilder, RelationalCo
   private def convertTimestamp(input: Any): String = {
     input match {
       case ts: Timestamp =>
-        // snapshot stage 8 hours later than db
         val localDateTime = ts.toLocalDateTime
         val zonedDateTime = localDateTime.atZone(timestampZoneId).withZoneSameInstant(ZoneId.of("UTC"))
         val ori = timestampFormatter.format(zonedDateTime)
         ori.substring(0, ori.indexOf("["))
       case zdt: ZonedDateTime =>
-        // incremental stage 8 hours earlier than db
         val zonedDateTime = zdt.withZoneSameInstant(timestampZoneId)
         val ori = timestampFormatter.format(zonedDateTime)
         ori.substring(0, ori.indexOf("["))

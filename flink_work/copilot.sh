@@ -1,6 +1,8 @@
 #!/bin/bash
 export HADOOP_CLASSPATH=`hadoop classpath`
 yarn_resource_web="flink-cdc-003.nm.ctdcp.com:8088"
+flink_bin_dir=/home/ads/cdc/flink-1.17.0-x/bin
+jar_path=/home/ads/cdc/flink_work-1.3.jar
 
 ################### backup checkpoint
 function backup_jobid_cache() {
@@ -37,13 +39,20 @@ function shutdown_and_clean() {
     curl -s $url
   fi
 
-  rm_jobid_cache $APP_NAME
+#  rm_jobid_cache $APP_NAME
+#
+#  if [ $# -eq 2 ]; then
+#    set -x
+#    hadoop fs -rm -r hdfs://ctyunns/user/ads/hudi/hudi_order/*_$2
+#    hadoop fs -rm -r hdfs://ctyunns/user/ads/hudi/hudi_cust/*_$2
+#    set +x
+#  fi
 }
 
 ################### kafka
 function run2kafka_crm() {
   local appName="cdc2kafka_mysql_crm_sharding_$1"
-./flink-1.17.0-x/bin/flink run-application -t yarn-application -Dyarn.provided.lib.dirs=hdfs://ctyunns/user/ads/flink/lib2 \
+$flink_bin_dir/flink run-application -t yarn-application -Dyarn.provided.lib.dirs=hdfs://ctyunns/user/ads/flink/lib2 \
   -Dsecurity.kerberos.login.use-ticket-cache=false -Dsecurity.kerberos.login.contexts=Client,KafkaClient \
   -Dsecurity.kerberos.login.principal=ads/hdp-tmp007.nm.ctdcp.com@BIGDATA.CHINATELECOM.CN \
   -Dsecurity.kerberos.login.keytab=/etc/security/keytabs/ads.keytab \
@@ -53,14 +62,14 @@ function run2kafka_crm() {
   -Dyarn.application.name=$appName -Dyarn.application.queue=dws \
   -Djobmanager.memory.process.size=8gb -Dtaskmanager.numberOfTaskSlots=4 -Dparallelism.default=4 \
   -Dtaskmanager.memory.process.size=16gb -Dtaskmanager.memory.managed.fraction=0.2 -Dtaskmanager.memory.network.fraction=0.1 \
-  -c lakepump.kafka.MysqlCDC2Kafka flink_work-1.3.jar dbInstance=mysql_crm serverId=5601-5604 sharding=$1 appName=$appName \
+  -c lakepump.kafka.MysqlCDC2Kafka $jar_path dbInstance=mysql_crm serverId=5601-5604 sharding=$1 appName=$appName \
   dbTables=cust.prod_spec_inst,cust.prod_spec_inst_attr,cust.prod_spec_inst_label_rel,cust.prod_spec_res_inst,cust.resource_view_inst,cust.resource_view_inst_attr,order.inner_ord_offer_inst_pay_info,order.inner_ord_offer_inst_pay_info_his,order.inner_ord_offer_prod_inst_rel,order.inner_ord_offer_prod_inst_rel_his,order.inner_ord_prod_spec_inst,order.inner_ord_prod_spec_inst_his,order.inner_ord_prod_spec_res_inst,order.inner_ord_prod_spec_res_inst_his,order.master_order,order.master_order_attr,order.master_order_attr_his,order.master_order_his,order.ord_offer_inst,order.ord_offer_inst_attr,order.ord_offer_inst_attr_his,order.ord_offer_inst_his,order.ord_prod_spec_inst,order.ord_prod_spec_inst_attr,order.ord_prod_spec_inst_attr_his,order.ord_prod_spec_inst_his,order.order_attr,order.order_attr_his,order.order_item,order.order_item_attr,order.order_item_attr_his,order.order_item_his,order.order_meta,order.order_meta_his,order.order_pay_info,order.order_pay_info_his \
   buckets=23,280,1,23,1,1,1,20,1,24,1,24,1,24,1,1,93,13,1,1,113,22,1,1,432,22,1,80,1,1,1,44,1,13,1,3
 }
 
 function run2kafka_account() {
   local appName="cdc2kafka_mysql_account_sharding_$1"
-./flink-1.17.0-x/bin/flink run-application -t yarn-application -Dyarn.provided.lib.dirs=hdfs://ctyunns/user/ads/flink/lib2 \
+$flink_bin_dir/flink run-application -t yarn-application -Dyarn.provided.lib.dirs=hdfs://ctyunns/user/ads/flink/lib2 \
   -Dsecurity.kerberos.login.use-ticket-cache=false -Dsecurity.kerberos.login.contexts=Client,KafkaClient \
   -Dsecurity.kerberos.login.principal=ads/hdp-tmp007.nm.ctdcp.com@BIGDATA.CHINATELECOM.CN \
   -Dsecurity.kerberos.login.keytab=/etc/security/keytabs/ads.keytab \
@@ -70,15 +79,20 @@ function run2kafka_account() {
   -Dyarn.application.name=$appName -Dyarn.application.queue=dws \
   -Djobmanager.memory.process.size=4gb -Dtaskmanager.numberOfTaskSlots=4 -Dparallelism.default=4 \
   -Dtaskmanager.memory.process.size=8gb -Dtaskmanager.memory.managed.fraction=0.2 -Dtaskmanager.memory.network.fraction=0.1 \
-  -c lakepump.kafka.MysqlCDC2Kafka flink_work-1.3.jar dbInstance=mysql_account serverId=5601-5604 sharding=$1 appName=$appName \
+  -c lakepump.kafka.MysqlCDC2Kafka $jar_path dbInstance=mysql_account serverId=5601-5604 sharding=$1 appName=$appName \
   dbTables=acctdb.acct_item_total_month_[0-9]{6},acctdb.order_info_log,acctdb.payment \
   buckets=100,8,10
 }
 
 ################### hudi
+#  -Dhigh-availability.type=zookeeper \
+#  -Dhigh-availability.zookeeper.quorum=hdp-s092.nm.ctdcp.com:2181,hdp-s047.nm.ctdcp.com:2181,hdp-s048.nm.ctdcp.com:2181,hdp-s049.nm.ctdcp.com:2181,hdp-s051.nm.ctdcp.com:2181 \
+#  -Dhigh-availability.zookeeper.path.root=/flink-ha/$appName \
+#  -Dhigh-availability.cluster-id=/$appName \
+#  -Dhigh-availability.storageDir=hdfs://ctyunns/user/ads/flink/ha/recovery \
 function run2hudi_crm() {
   local appName="cdc2hudi_mysql_crm_sharding_$1"
-./flink-1.17.0-x/bin/flink run-application -t yarn-application -Dyarn.provided.lib.dirs=hdfs://ctyunns/user/ads/flink/lib2 \
+$flink_bin_dir/flink run-application -t yarn-application -Dyarn.provided.lib.dirs=hdfs://ctyunns/user/ads/flink/lib2 \
   -Dsecurity.kerberos.login.use-ticket-cache=false -Dsecurity.kerberos.login.contexts=Client,KafkaClient \
   -Dsecurity.kerberos.login.principal=ads/hdp-tmp007.nm.ctdcp.com@BIGDATA.CHINATELECOM.CN \
   -Dsecurity.kerberos.login.keytab=/etc/security/keytabs/ads.keytab \
@@ -88,17 +102,15 @@ function run2hudi_crm() {
   -Dyarn.application.name=$appName -Dyarn.application.queue=dws \
   -Djobmanager.memory.process.size=8gb -Dtaskmanager.numberOfTaskSlots=4 -Dparallelism.default=4 \
   -Dtaskmanager.memory.process.size=32gb -Dtaskmanager.memory.managed.fraction=0.2 -Dtaskmanager.memory.network.fraction=0.1 \
-  -c lakepump.hudi.MysqlCDC2Hudi flink_work-1.3.jar dbInstance=mysql_crm serverId=5611-5614 sharding=$1 appName=$appName \
-  dbTables=cust.prod_spec_inst,cust.prod_spec_inst_attr,cust.prod_spec_res_inst,order.inner_ord_offer_inst_pay_info_his,order.inner_ord_prod_spec_inst_his,order.master_order_attr_his,order.master_order_his,order.ord_prod_spec_inst_his,order.order_attr_his,order.inner_order_attr_his,order.inner_ord_offer_inst_his,order.inner_order_meta_his,cust.offer_prod_inst_rel,cust.offer_price_plan_inst,cust.account_attr,cust.project_obj_relation \
-  buckets=23,280,23,20,24,93,13,22,80,104,24,15,23,17,23,10
-#  dbTables=cust.prod_spec_inst,cust.prod_spec_inst_attr,cust.prod_spec_res_inst,order.inner_ord_offer_inst_pay_info_his,order.inner_ord_prod_spec_inst_his,order.master_order_attr_his,order.master_order_his,order.ord_prod_spec_inst_his,order.order_attr_his,order.order_item_his,order.order_pay_info_his,order.inner_order_attr_his,order.inner_ord_offer_inst_his,order.inner_order_meta_his,cust.offer_prod_inst_rel,cust.offer_price_plan_inst,cust.account_attr,cust.project_obj_relation \
-#  buckets=23,280,23,20,24,93,13,22,80,44,3,104,24,15,23,17,23,10
+  -c lakepump.hudi.MysqlCDC2Hudi $jar_path dbInstance=mysql_crm serverId=5611-5614 sharding=$1 appName=$appName \
+  dbTables=cust.prod_spec_inst,cust.prod_spec_inst_attr,cust.prod_spec_res_inst,order.inner_ord_offer_inst_pay_info_his,order.inner_ord_prod_spec_inst_his,order.master_order_attr_his,order.master_order_his,order.ord_prod_spec_inst_his,order.order_attr_his,order.order_item_his,order.order_pay_info_his,order.inner_order_attr_his,order.inner_ord_offer_inst_his,order.inner_order_meta_his,cust.offer_prod_inst_rel,cust.offer_price_plan_inst,cust.account_attr,cust.project_obj_relation \
+  buckets=23,280,23,20,24,93,13,22,80,44,3,104,24,15,23,17,23,10
 #  minusDbTables=order.order_item_his,order.order_pay_info_his
 }
 
 function run2hudi_account() {
   local appName="cdc2hudi_mysql_account_sharding_$1"
-./flink-1.17.0-x/bin/flink run-application -t yarn-application -Dyarn.provided.lib.dirs=hdfs://ctyunns/user/ads/flink/lib2 \
+$flink_bin_dir/flink run-application -t yarn-application -Dyarn.provided.lib.dirs=hdfs://ctyunns/user/ads/flink/lib2 \
   -Dsecurity.kerberos.login.use-ticket-cache=false -Dsecurity.kerberos.login.contexts=Client,KafkaClient \
   -Dsecurity.kerberos.login.principal=ads/hdp-tmp007.nm.ctdcp.com@BIGDATA.CHINATELECOM.CN \
   -Dsecurity.kerberos.login.keytab=/etc/security/keytabs/ads.keytab \
@@ -108,13 +120,13 @@ function run2hudi_account() {
   -Dyarn.application.name=$appName -Dyarn.application.queue=dws \
   -Djobmanager.memory.process.size=4gb -Dtaskmanager.numberOfTaskSlots=4 -Dparallelism.default=4 \
   -Dtaskmanager.memory.process.size=8gb -Dtaskmanager.memory.managed.fraction=0.2 -Dtaskmanager.memory.network.fraction=0.1 \
-  -c lakepump.hudi.MysqlCDC2Hudi flink_work-1.3.jar dbInstance=mysql_account serverId=5611-5614 sharding=$1 appName=$appName \
+  -c lakepump.hudi.MysqlCDC2Hudi $jar_path dbInstance=mysql_account serverId=5611-5614 sharding=$1 appName=$appName \
   dbTables=acctdb.payment \
   buckets=10
 }
 
 function hudi_compact() {
-./flink-1.17.0-x/bin/flink run-application -t yarn-application -Dyarn.provided.lib.dirs=hdfs://ctyunns/user/ads/flink/lib2 \
+$flink_bin_dir/flink run-application -t yarn-application -Dyarn.provided.lib.dirs=hdfs://ctyunns/user/ads/flink/lib2 \
   -Dsecurity.kerberos.login.use-ticket-cache=false -Dsecurity.kerberos.login.contexts=Client,KafkaClient \
   -Dsecurity.kerberos.login.principal=ads/hdp-tmp007.nm.ctdcp.com@BIGDATA.CHINATELECOM.CN \
   -Dsecurity.kerberos.login.keytab=/etc/security/keytabs/ads.keytab \
@@ -123,57 +135,46 @@ function hudi_compact() {
   -Dyarn.application.name=compact_hudi_tables -Dyarn.application.queue=ads \
   -Djobmanager.memory.process.size=4gb -Dtaskmanager.numberOfTaskSlots=4 -Dparallelism.default=4 \
   -Dtaskmanager.memory.process.size=16gb -Dtaskmanager.memory.managed.fraction=0.1 -Dtaskmanager.memory.network.fraction=0.1 \
-  -c lakepump.hudi.TimingCompactor flink_work-1.3.jar \
+  -c lakepump.hudi.TimingCompactor $jar_path \
   dbTables=cust.prod_spec_inst,cust.prod_spec_inst_attr,cust.prod_spec_res_inst,order.inner_ord_offer_inst_pay_info_his,order.inner_ord_prod_spec_inst_his,order.master_order_attr_his,order.master_order_his,order.ord_prod_spec_inst_his,order.order_attr_his,order.order_item_his,order.order_pay_info_his,order.inner_order_attr_his,order.inner_ord_offer_inst_his,order.inner_order_meta_his,cust.offer_prod_inst_rel,cust.offer_price_plan_inst,cust.account_attr,cust.project_obj_relation \
   buckets=23,280,23,20,24,93,13,22,80,44,3,104,24,15,23,17,23,10
 }
 
 #################################
 # AUTO >>>>>>>>>>>>>>
+#function invoke_function() {
+#  local func_name="$1"
+#  local app_name="$2"
+#
+#  line_cnt=$(cat $yarn_app_list_path | awk '{print $2}' | grep -n "^$app_name$" | wc -l)
+#  if [ $line_cnt -eq 0 ]; then
+#    echo "$app_name is stop"
+#    $func_name
+#  else
+#    echo "$app_name is running"
+#  fi
+#}
+#
 #yarn_app_list_path="./yarn_app_list.txt"
 #yarn application -list > $yarn_app_list_path
 #parts=(0 1 2 3 4 5 6 7)
 #for i in "${parts[@]}"; do
-#  app_name=cdc2kafka_mysql_crm_sharding_$i
-#  line_cnt=$(cat $yarn_app_list_path | awk '{print $2}' | grep -n "^$app_name$" | wc -l)
-#  if [ $line_cnt -eq 0 ]; then
-#    run2kafka_crm $i
-#  fi
-#
-#  app_name=cdc2kafka_mysql_account_sharding_$i
-#  line_cnt=$(cat $yarn_app_list_path | awk '{print $2}' | grep -n "^$app_name$" | wc -l)
-#  if [ $line_cnt -eq 0 ]; then
-#    run2kafka_account $i
-#  fi
-#
-#  app_name=cdc2hudi_mysql_crm_sharding_$i
-#  line_cnt=$(cat $yarn_app_list_path | awk '{print $2}' | grep -n "^$app_name$" | wc -l)
-#  if [ $line_cnt -eq 0 ]; then
-#    run2hudi_crm $i
-#  fi
-#
-#  app_name=cdc2hudi_mysql_account_sharding_$i
-#  line_cnt=$(cat $yarn_app_list_path | awk '{print $2}' | grep -n "^$app_name$" | wc -l)
-#  if [ $line_cnt -eq 0 ]; then
-#    run2hudi_account $i
-#  fi
+#  invoke_function "run2kafka_crm $i" "cdc2kafka_mysql_crm_sharding_$i"
+#  invoke_function "run2kafka_account $i" "cdc2kafka_mysql_account_sharding_$i"
+#  invoke_function "run2hudi_crm $i" "cdc2hudi_mysql_crm_sharding_$i"
+##  invoke_function "run2hudi_account $i" "cdc2hudi_mysql_account_sharding_$i"
 #done
-#
-#app_name=compact_hudi_tables
-#line_cnt=$(cat $yarn_app_list_path | awk '{print $2}' | grep -n "^$app_name$" | wc -l)
-#if [ $line_cnt -eq 0 ]; then
-#  hudi_compact
-#fi
+#invoke_function hudi_compact "compact_hudi_tables"
 
 #################################
 # TODO >>>>>>>>>>>>>>
-#my_list=(0 1 2 3 4 5 6 7)
-my_list=(0)
+my_list=(0 1 2 3 4 5 6 7)
+#my_list=(1)
 for i in "${my_list[@]}"; do
 #  shutdown_and_clean cdc2kafka_mysql_crm_sharding_$i
 #  shutdown_and_clean cdc2kafka_mysql_account_sharding_$i
-#  shutdown_and_clean cdc2hudi_mysql_crm_sharding_$i
-#  shutdown_and_clean cdc2hudi_mysql_account_sharding_$i
+  shutdown_and_clean cdc2hudi_mysql_crm_sharding_$i $i
+#  shutdown_and_clean cdc2hudi_mysql_account_sharding_$i $i
 
 #  run2kafka_crm $i
 #  run2kafka_account $i
@@ -181,11 +182,11 @@ for i in "${my_list[@]}"; do
 #  run2hudi_account $i
 done
 
-#hudi_compact
+hudi_compact
 
 #################################
 # DEBUG
-#./flink-1.17.0-x/bin/flink run-application -t yarn-application -Dyarn.provided.lib.dirs=hdfs://ctyunns/user/ads/flink/lib2 \
+#$flink_bin_dir/flink run-application -t yarn-application -Dyarn.provided.lib.dirs=hdfs://ctyunns/user/ads/flink/lib2 \
 #  -Dsecurity.kerberos.login.use-ticket-cache=false -Dsecurity.kerberos.login.contexts=Client,KafkaClient \
 #  -Dsecurity.kerberos.login.principal=ads/hdp-tmp007.nm.ctdcp.com@BIGDATA.CHINATELECOM.CN \
 #  -Dsecurity.kerberos.login.keytab=/etc/security/keytabs/ads.keytab \
@@ -195,5 +196,5 @@ done
 #  -Dyarn.application.name=consume_test -Dyarn.application.queue=ads \
 #  -Djobmanager.memory.process.size=1gb -Dtaskmanager.numberOfTaskSlots=1 -Dparallelism.default=1 \
 #  -Dtaskmanager.memory.process.size=1gb -Dtaskmanager.memory.managed.fraction=0.1 -Dtaskmanager.memory.network.fraction=0.1 \
-#  -c lakepump.kafka.TestCDCConsumer flink_work-1.3.jar acctdb.acct_item_total_month_[0-9]{6} 2023-12-11_00:00:00 t_acctdb_acct_item_total_month
+#  -c lakepump.kafka.TestCDCConsumer $jar_path acctdb.acct_item_total_month_[0-9]{6} 2023-12-11_00:00:00 t_acctdb_acct_item_total_month
 

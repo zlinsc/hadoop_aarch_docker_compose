@@ -76,10 +76,8 @@ class MySqlDateTimeConverter extends CustomConverter[SchemaBuilder, RelationalCo
     input match {
       case ts: Timestamp =>
         timestampFormatter.format(ts.toLocalDateTime).replaceAll("T", " ")
-//        timestampFormatter.format(ts.toLocalDateTime) + "Z"
       case dateTime: LocalDateTime =>
         datetimeFormatter.format(dateTime).replaceAll("T", " ")
-//        datetimeFormatter.format(dateTime) + "Z"
       case _ =>
         null
     }

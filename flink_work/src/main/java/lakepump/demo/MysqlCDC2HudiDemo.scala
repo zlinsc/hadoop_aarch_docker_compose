@@ -127,6 +127,7 @@ object MysqlCDC2HudiDemo {
     val password = conf.getString("%s.password".format(dbInstance))
     val group = conf.getConfigList("%s.instances".format(dbInstance)).asScala
     val g = group(sharding.toInt)
+    val timeZone = "Asia/Shanghai"
     val host = g.getString("hostname")
     val port = g.getInt("port")
     val dbPostfix = g.getStringList("dbPostfix").asScala
@@ -159,6 +160,7 @@ object MysqlCDC2HudiDemo {
       .scanNewlyAddedTableEnabled(true)
       .debeziumProperties(MyDebeziumProps.getHudiProps)
       .startupOptions(startup)
+      .serverTimeZone(timeZone)
 
     //// hudi bucket config
     val buckets = argsMap(SET_BUCKETS).split(",")
@@ -208,6 +210,7 @@ object MysqlCDC2HudiDemo {
       .scanNewlyAddedTableEnabled(true)
       .debeziumProperties(MyDebeziumProps.getHudiProps)
       .startupOptions(startup)
+      .serverTimeZone(timeZone)
       .deserializer(new DebeziumDeserializationSchema[RecPack] {
         override def deserialize(sourceRecord: SourceRecord, out: Collector[RecPack]): Unit = {
           val topic = sourceRecord.topic()
@@ -235,6 +238,8 @@ object MysqlCDC2HudiDemo {
               if (op == "c" || op == "r") {
                 val after = value.getStruct(Envelope.FieldName.AFTER)
                 val afterSchema = valueSchema.field(Envelope.FieldName.AFTER).schema
+                LOG.info("op="+op+", tttt="+afterSchema.fields().asScala.map(_.toString).mkString(";"))
+                LOG.info("tttt2="+after.toString)
                 val afterRowData = conv.convert(after, afterSchema).asInstanceOf[GenericRowData]
                 afterRowData.setRowKind(RowKind.INSERT)
                 out.collect(RecPack(tagName, keyHash, afterRowData))
