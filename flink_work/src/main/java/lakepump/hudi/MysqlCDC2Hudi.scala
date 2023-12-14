@@ -25,7 +25,7 @@ import org.apache.flink.streaming.api.datastream.DataStream
 import org.apache.flink.streaming.api.environment.CheckpointConfig.ExternalizedCheckpointCleanup
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.flink.streaming.api.functions.{KeyedProcessFunction, ProcessFunction}
-import org.apache.flink.table.api.Schema
+import org.apache.flink.table.api.{DataTypes, Schema}
 import org.apache.flink.table.data.{GenericRowData, RowData}
 import org.apache.flink.table.types.logical.RowType
 import org.apache.flink.table.types.utils.TypeConversions
@@ -59,6 +59,8 @@ object MysqlCDC2Hudi {
   val SET_BUCKETS = "buckets"
   val SET_APP_NAME = "appName"
 
+  val SHARDING_COL = "_hudi_sharding"
+  val WRITE_TIME_COL = "_hudi_write_time"
   val BINLOG_PARALLEL = 4
 
   def main(args: Array[String]): Unit = {
@@ -186,14 +188,16 @@ object MysqlCDC2Hudi {
       // return RowType
       if (tableSchemaMap.contains(dbTable)) {
         val t = tableSchemaMap(dbTable).getTable
-        val colsDT = t.columns().asScala.map(x => (x.name(), MySqlTypeUtils.fromDbzColumn(x).getLogicalType))
-        //        colsDT += ((SET_SHARDING, DataTypes.STRING().getLogicalType)) // partition column
+        val colsDT = (WRITE_TIME_COL, DataTypes.STRING().getLogicalType) +: // write time column
+          (SHARDING_COL, DataTypes.STRING().getLogicalType) +: // sharding column
+          t.columns().asScala.map(x => (x.name(), MySqlTypeUtils.fromDbzColumn(x).getLogicalType))
         val rowType = RowType.of(colsDT.map(_._2): _*)
         val colNames = colsDT.map(_._1)
         // columns
         tableRowMap += (x -> (colNames, rowType))
         // primary key
-        tablePkMap += (x -> t.primaryKeyColumnNames.asScala)
+        val lst = t.primaryKeyColumnNames.asScala :+ SHARDING_COL
+        tablePkMap += (x -> lst)
       } else throw new Exception("%s is not in tableSchemaMap".format(dbTable))
     })
     println("pk=" + tablePkMap.mkString(";"))
@@ -226,6 +230,7 @@ object MysqlCDC2Hudi {
             val table = arr(2)
             val regex = "_\\d+$".r
             val tagName = regex.replaceAllIn(db, "") + "." + table
+            val dbTail = regex.findFirstIn(db).getOrElse("")
 
             val keyHash = sourceRecord.key().hashCode()
             //            val bytes = MysqlCDC2Hudi.jsonConverter.fromConnectData(sourceRecord.topic(), sourceRecord.valueSchema(), sourceRecord.value())
@@ -236,7 +241,7 @@ object MysqlCDC2Hudi {
             if (opField != null) {
               val fullName = "%s.%s".format(db, table)
               val conv = RowDataDeserializationRuntimeConverter.createConverter(checkNotNull(tableRowMap(fullName)._2),
-                ZoneId.of("UTC"), new ShardDeserializationRuntimeConverterFactory(sharding))
+                ZoneId.of("UTC"), new ShardDeserializationRuntimeConverterFactory(sharding + dbTail))
 
               val op = value.getString(opField.name)
               if (op == "c" || op == "r") {

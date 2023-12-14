@@ -6,12 +6,15 @@ import org.apache.flink.table.types.logical.{LogicalType, LogicalTypeRoot, RowTy
 import org.apache.kafka.connect.data.{Schema, Struct}
 import org.slf4j.{Logger, LoggerFactory}
 
+import java.text.SimpleDateFormat
 import java.time.ZoneId
-import java.util.Optional
+import java.util.{Date, Optional}
 import scala.collection.JavaConverters._
 
 class ShardDeserializationRuntimeConverterFactory(shardingVal: String) extends DeserializationRuntimeConverterFactory {
   val LOG: Logger = LoggerFactory.getLogger(getClass)
+
+  val formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
 
   override def createUserDefinedConverter(logicalType: LogicalType, zoneId: ZoneId): Optional[DeserializationRuntimeConverter] = {
     logicalType.getTypeRoot match {
@@ -45,21 +48,25 @@ class ShardDeserializationRuntimeConverterFactory(shardingVal: String) extends D
         //        LOG.info("vvvvvvvvv===schema:" + schema.fields().asScala.map(_.name()).mkString(";"))
         //        LOG.info("vvvvvvvvvvv=struct:" + struct.schema().fields().asScala.map(_.name()).mkString(";"))
         val row: GenericRowData = new GenericRowData(arity)
+        // write time column
+        val currTime: String = formatter.format(new Date(System.currentTimeMillis()))
+        val convertedFieldOfWriteTime = convertField(fieldConverters(0), currTime, Schema.STRING_SCHEMA)
+        row.setField(0, convertedFieldOfWriteTime)
+        // sharding column
+        val convertedFieldOfSharding = convertField(fieldConverters(1), shardingVal, Schema.STRING_SCHEMA)
+        row.setField(1, convertedFieldOfSharding)
+        // data columns
         for (i <- 0 until arity) {
+          val j = i + 2
           if (i >= fieldsListSize) {
-            var convertedField: Object = null
-//            if (i == arity - 1) {
-//              convertedField = convertField(fieldConverters(i), shardingVal, Schema.STRING_SCHEMA)
-//            } else {
-              LOG.warn("column index %d is missing".format(i))
-//            }
-            row.setField(i, convertedField)
+            LOG.warn("column index %d is missing".format(i))
+            row.setField(j, null)
           } else {
             val fieldName = fieldsList.get(i).name()
             val fieldValue = struct.getWithoutDefault(fieldName)
             val fieldSchema = schema.field(fieldName).schema()
-            val convertedField = convertField(fieldConverters(i), fieldValue, fieldSchema)
-            row.setField(i, convertedField)
+            val convertedField = convertField(fieldConverters(j), fieldValue, fieldSchema)
+            row.setField(j, convertedField)
           }
         }
         row
