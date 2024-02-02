@@ -55,7 +55,6 @@ object MysqlCDC2Hudi {
   val SET_SERVER_ID = "serverId"
   val SET_SHARDING = "sharding"
   val SET_DB_TABLES = "dbTables"
-  val SET_MINUS_DB_TABLES = "minusDbTables"
   val SET_BUCKETS = "buckets"
   val SET_APP_NAME = "appName"
 
@@ -84,17 +83,22 @@ object MysqlCDC2Hudi {
     val jobIDCacheDir = conf.getString("flink.jobidCache")
     println(jobIDCacheDir + appName)
     val jobidPath = new Path(jobIDCacheDir + appName)
-    val fs = HadoopUtils.fileSys
-    if (fs.exists(jobidPath)) {
-      val lastJobID = HadoopUtils.getFileContent(jobidPath)
-      if (lastJobID.nonEmpty) {
-        val lastSavePath = HadoopUtils.getNewestFile(ckpDir + lastJobID)
-        if (lastSavePath != null) {
-          configuration.setString("execution.savepoint.path", lastSavePath.toString)
-          println("use savepoint: " + lastSavePath)
-        } else println("savepoint is not found on path: " + ckpDir + lastJobID)
-      } else println("cache file is empty")
-    } else println("first time to create this app with name " + appName)
+    val lastSavePath = HadoopUtils.getLatestValidSavepointPath(jobidPath, ckpDir)
+    if (lastSavePath.nonEmpty) {
+      configuration.setString("execution.savepoint.path", lastSavePath)
+      println("use savepoint: " + lastSavePath)
+    }
+//    val fs = HadoopUtils.fileSys
+//    if (fs.exists(jobidPath)) {
+//      val lastJobID = HadoopUtils.getFileContent(jobidPath)
+//      if (lastJobID.nonEmpty) {
+//        val lastSavePath = HadoopUtils.getNewestFile(ckpDir + lastJobID)
+//        if (lastSavePath != null) {
+//          configuration.setString("execution.savepoint.path", lastSavePath.toString)
+//          println("use savepoint: " + lastSavePath)
+//        } else println("savepoint is not found on path: " + ckpDir + lastJobID)
+//      } else println("cache file is empty")
+//    } else println("first time to create this app with name " + appName)
 
     //// flink config
     val env = StreamExecutionEnvironment.getExecutionEnvironment(configuration)
@@ -136,10 +140,8 @@ object MysqlCDC2Hudi {
     val dbList = mutable.ArrayBuffer[String]()
     val tables = argsMap(SET_DB_TABLES) // db.table
     val tblRawList = tables.split(",")
-    val minusTables = argsMap.getOrElse(SET_MINUS_DB_TABLES, "")
-    val minusTablesSet = minusTables.split(",").toSet
     val tblList = ArrayBuffer[String]()
-    tblRawList.foreach(x => if (!minusTablesSet.contains(x)) tblList += x)
+    tblRawList.foreach(x => tblList += x)
     println("actual tables: " + tblList.mkString(";"))
     val tblListWithPostfix = tblList.flatMap(t => {
       val arr = t.split("\\.")

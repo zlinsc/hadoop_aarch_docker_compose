@@ -11,7 +11,7 @@ import java.util.Properties
 import scala.collection.JavaConverters._
 
 object KafkaUtils {
-  val conf: Config = ConfigFactory.load("app_online.conf")
+  val conf: Config = ConfigFactory.load("settings_app_online.conf")
   val LOG: Logger = LoggerFactory.getLogger(getClass)
 
   def getBrokerList: String = {

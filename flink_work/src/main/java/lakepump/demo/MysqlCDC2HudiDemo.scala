@@ -76,23 +76,23 @@ object MysqlCDC2HudiDemo {
     val appName = argsMap(SET_APP_NAME)
 
     //// savepoint recover
-//    if (HadoopUtils.appIsRunningOrNot(appName)) throw new Exception("app of name %s is already running".format(appName))
+    //    if (HadoopUtils.appIsRunningOrNot(appName)) throw new Exception("app of name %s is already running".format(appName))
     val configuration = new Configuration()
     val ckpDir = conf.getString("flink.checkpointDir")
-//    val jobIDCacheDir = conf.getString("flink.jobidCache")
-//    println(jobIDCacheDir + appName)
-//    val jobidPath = new Path(jobIDCacheDir + appName)
-//    val fs = HadoopUtils.fileSys
-//    if (fs.exists(jobidPath)) {
-//      val lastJobID = HadoopUtils.getFileContent(jobidPath)
-//      if (lastJobID.nonEmpty) {
-//        val lastSavePath = HadoopUtils.getNewestFile(ckpDir + lastJobID)
-//        if (lastSavePath != null) {
-//          configuration.setString("execution.savepoint.path", lastSavePath.toString)
-//          println("use savepoint: " + lastSavePath)
-//        } else println("savepoint is not found on path: " + ckpDir + lastJobID)
-//      } else println("cache file is empty")
-//    } else println("first time to create this app with name " + appName)
+    //    val jobIDCacheDir = conf.getString("flink.jobidCache")
+    //    println(jobIDCacheDir + appName)
+    //    val jobidPath = new Path(jobIDCacheDir + appName)
+    //    val fs = HadoopUtils.fileSys
+    //    if (fs.exists(jobidPath)) {
+    //      val lastJobID = HadoopUtils.getFileContent(jobidPath)
+    //      if (lastJobID.nonEmpty) {
+    //        val lastSavePath = HadoopUtils.getNewestFile(ckpDir + lastJobID)
+    //        if (lastSavePath != null) {
+    //          configuration.setString("execution.savepoint.path", lastSavePath.toString)
+    //          println("use savepoint: " + lastSavePath)
+    //        } else println("savepoint is not found on path: " + ckpDir + lastJobID)
+    //      } else println("cache file is empty")
+    //    } else println("first time to create this app with name " + appName)
 
     //// flink config
     val env = StreamExecutionEnvironment.getExecutionEnvironment(configuration)
@@ -183,7 +183,7 @@ object MysqlCDC2HudiDemo {
         val t = tableSchemaMap(dbTable).getTable
         val colsDT = t.columns().asScala.map(x => (x.name(), MySqlTypeUtils.fromDbzColumn(x).getLogicalType))
         //        colsDT += ((SET_SHARDING, DataTypes.STRING().getLogicalType)) // partition column
-//        colsDT += (("_hoodie_is_deleted", DataTypes.BOOLEAN().getLogicalType))
+        //        colsDT += (("_hoodie_is_deleted", DataTypes.BOOLEAN().getLogicalType))
         val rowType = RowType.of(colsDT.map(_._2): _*)
         val colNames = colsDT.map(_._1)
         // columns
@@ -238,8 +238,8 @@ object MysqlCDC2HudiDemo {
               if (op == "c" || op == "r") {
                 val after = value.getStruct(Envelope.FieldName.AFTER)
                 val afterSchema = valueSchema.field(Envelope.FieldName.AFTER).schema
-                LOG.info("op="+op+", tttt="+afterSchema.fields().asScala.map(_.toString).mkString(";"))
-                LOG.info("tttt2="+after.toString)
+                LOG.info("op=" + op + ", tttt=" + afterSchema.fields().asScala.map(_.toString).mkString(";"))
+                LOG.info("tttt2=" + after.toString)
                 val afterRowData = conv.convert(after, afterSchema).asInstanceOf[GenericRowData]
                 afterRowData.setRowKind(RowKind.INSERT)
                 out.collect(RecPack(tagName, keyHash, afterRowData))
@@ -295,12 +295,12 @@ object MysqlCDC2HudiDemo {
 
           override def getProducedType: TypeInformation[RecPack] = TypeInformation.of(classOf[RecPack])
         }).process(new KeyedProcessFunction[Int, RecPack, RowData] {
-        override def processElement(in: RecPack,
-                                    ctx: KeyedProcessFunction[Int, RecPack, RowData]#Context,
-                                    out: Collector[RowData]): Unit = {
-          out.collect(in.row)
-        }
-      }).setParallelism(bucketParallel).uid("dist:" + x)
+          override def processElement(in: RecPack,
+                                      ctx: KeyedProcessFunction[Int, RecPack, RowData]#Context,
+                                      out: Collector[RowData]): Unit = {
+            out.collect(in.row)
+          }
+        }).setParallelism(bucketParallel).uid("dist:" + x)
 
       //// hudi sink
       val targetArr = x.split("\\.")
@@ -332,11 +332,6 @@ object MysqlCDC2HudiDemo {
         FlinkOptions.COMPACTION_DELTA_COMMITS.key() -> "2",
         FlinkOptions.COMPACTION_DELTA_SECONDS.key() -> "300",
 
-//        HoodieCleanConfig.ASYNC_CLEAN.key() -> "true",
-//        HoodieCleanConfig.CLEAN_MAX_COMMITS.key() -> "1",
-//        FlinkOptions.CLEAN_POLICY.key() -> "KEEP_LATEST_FILE_VERSIONS",
-//        FlinkOptions.CLEAN_RETAIN_FILE_VERSIONS.key() -> "12",
-
         HoodieCleanConfig.AUTO_CLEAN.key() -> "false",
         //        HoodieCleanConfig.ASYNC_CLEAN.key() -> "true",
         //        HoodieCleanConfig.CLEAN_MAX_COMMITS.key() -> "10",
@@ -354,14 +349,19 @@ object MysqlCDC2HudiDemo {
         FlinkOptions.WRITE_TASKS.key() -> bucketParallel.toString,
         FlinkOptions.BUCKET_ASSIGN_TASKS.key() -> bucketParallel.toString,
 
-//        HoodieWriteConfig.NUM_RETRIES_ON_CONFLICT_FAILURES.key() -> "3",
-//        HoodieWriteConfig.WRITE_CONCURRENCY_MODE.key() -> "optimistic_concurrency_control",
-//        HoodieCleanConfig.FAILED_WRITES_CLEANER_POLICY.key() -> "LAZY",
-//        HoodieLockConfig.LOCK_PROVIDER_CLASS_NAME.key() -> classOf[HiveMetastoreBasedLockProvider].getName,
-//        HoodieLockConfig.WRITE_CONFLICT_RESOLUTION_STRATEGY_CLASS_NAME.key() -> classOf[BucketIndexConcurrentFileWritesConflictResolutionStrategy].getName,
-//        LockConfiguration.HIVE_DATABASE_NAME_PROP_KEY -> "hudi_db",
-//        LockConfiguration.HIVE_TABLE_NAME_PROP_KEY -> "cdc_order",
-//        LockConfiguration.HIVE_METASTORE_URI_PROP_KEY -> "thrift://slave-node:9083",
+        //        HoodieCleanConfig.ASYNC_CLEAN.key() -> "true",
+        //        HoodieCleanConfig.CLEAN_MAX_COMMITS.key() -> "1",
+        //        FlinkOptions.CLEAN_POLICY.key() -> "KEEP_LATEST_FILE_VERSIONS",
+        //        FlinkOptions.CLEAN_RETAIN_FILE_VERSIONS.key() -> "12",
+
+        //        HoodieWriteConfig.NUM_RETRIES_ON_CONFLICT_FAILURES.key() -> "3",
+        //        HoodieWriteConfig.WRITE_CONCURRENCY_MODE.key() -> "optimistic_concurrency_control",
+        //        HoodieCleanConfig.FAILED_WRITES_CLEANER_POLICY.key() -> "LAZY",
+        //        HoodieLockConfig.LOCK_PROVIDER_CLASS_NAME.key() -> classOf[HiveMetastoreBasedLockProvider].getName,
+        //        HoodieLockConfig.WRITE_CONFLICT_RESOLUTION_STRATEGY_CLASS_NAME.key() -> classOf[BucketIndexConcurrentFileWritesConflictResolutionStrategy].getName,
+        //        LockConfiguration.HIVE_DATABASE_NAME_PROP_KEY -> "hudi_db",
+        //        LockConfiguration.HIVE_TABLE_NAME_PROP_KEY -> "cdc_order",
+        //        LockConfiguration.HIVE_METASTORE_URI_PROP_KEY -> "thrift://slave-node:9083",
       ).asJava
       val hudiBuilder = HoodiePipeline.builder("%s_%s".format(targetDB, targetTable))
         .schema(schema)
@@ -374,9 +374,9 @@ object MysqlCDC2HudiDemo {
     //// execute
     val jobName = getClass.getSimpleName + appName
     val jobClient = env.executeAsync(jobName)
-//    val jobID = jobClient.getJobID
-//    println("/=" + jobID)
-//    HadoopUtils.overwriteFileContent(jobidPath, jobID + "\n")
+    //    val jobID = jobClient.getJobID
+    //    println("/=" + jobID)
+    //    HadoopUtils.overwriteFileContent(jobidPath, jobID + "\n")
     jobClient.getJobExecutionResult.get()
   }
 }

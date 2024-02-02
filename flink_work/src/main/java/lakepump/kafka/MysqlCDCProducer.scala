@@ -25,7 +25,7 @@ object MysqlCDCProducer {
     val arr = args(0).split('.')
     val (db, chunk, table) = (arr(0), arr(1).toInt, arr(2))
     printf("CDC DB: %s, TABLE: %s, CHUNK NO: %d\n", db, table, chunk)
-    val conf = ConfigFactory.load("app_online.conf")
+    val conf = ConfigFactory.load("settings_app_online.conf")
     val env = StreamExecutionEnvironment.getExecutionEnvironment()
     env.enableCheckpointing(60000, CheckpointingMode.EXACTLY_ONCE)
     env.setStateBackend(new EmbeddedRocksDBStateBackend(true))

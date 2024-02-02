@@ -6,7 +6,7 @@ import com.ververica.cdc.connectors.mysql.source.MySqlSource
 import com.ververica.cdc.connectors.mysql.table.StartupOptions
 import org.apache.flink.api.common.eventtime.WatermarkStrategy
 import org.apache.flink.connector.base.DeliveryGuarantee
-import org.apache.flink.connector.kafka.sink.{KafkaRecordSerializationSchema, KafkaSink}
+import org.apache.flink.connector.kafka.sink.{KafkaRecordSerializationSchema, KafkaSink, TopicSelector}
 import org.apache.flink.contrib.streaming.state.EmbeddedRocksDBStateBackend
 import org.apache.flink.streaming.api.CheckpointingMode
 import org.apache.flink.streaming.api.datastream.DataStream
@@ -15,12 +15,13 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import lakepump.kafka.{KafkaUtils, MyKeySerializationSchema, MyShardPartitioner, MyValueSerializationSchema}
 import lakepump.mysql.JsonDeserializationSchema
 
+import scala.collection.mutable
+
 object MysqlCDCDemo {
   //  val LOG: Logger = LoggerFactory.getLogger(getClass)
-  val topic = "cdctest"
+  val topic = "cdctest2"
 
   def main(args: Array[String]): Unit = {
-    //    LOG.info("starting job")
     val conf = ConfigFactory.load("application.conf")
     val env = StreamExecutionEnvironment.getExecutionEnvironment()
     env.enableCheckpointing(60000, CheckpointingMode.EXACTLY_ONCE)
@@ -33,32 +34,41 @@ object MysqlCDCDemo {
     //    newFlinkConf.setString("yarn.application.id", YarnUtils.getAppID("flinksql"))
     //    env.getConfig.setGlobalJobParameters(newFlinkConf)
 
-//        val mysqlSource = MySqlSource.builder[String]()
+    val tables = args(0) // conf.getString("mysql.table")
+    val startup = if (args(1) == "init") StartupOptions.initial() else StartupOptions.specificOffset(args(1))
+
+    //        val mysqlSource = MySqlSource.builder[String]()
     val mysqlSource = MySqlSource.builder[JSONObject]()
       .serverId(conf.getString("mysql.serverId"))
       .hostname(conf.getString("mysql.hostname"))
       .port(conf.getInt("mysql.port"))
       .databaseList(conf.getString("mysql.database"))
-      .tableList(conf.getString("mysql.table"))
+      .tableList(tables)
       .scanNewlyAddedTableEnabled(true)
       .username(conf.getString("mysql.username"))
       .password(conf.getString("mysql.password"))
-      .startupOptions(StartupOptions.initial())
+      .startupOptions(startup)
       //      .startupOptions(StartupOptions.specificOffset("mysql-bin.000001", 5997))
       .deserializer(new JsonDeserializationSchema())
-//                        .deserializer(new JsonDebeziumDeserializationSchema())
+      //                        .deserializer(new JsonDebeziumDeserializationSchema())
       .serverTimeZone("Asia/Shanghai")
-//      .includeSchemaChanges(true)
+      //      .includeSchemaChanges(true)
       .build()
 
-//        val src = env.fromSource(mysqlSource, WatermarkStrategy.noWatermarks[String](), "Mysql CDC Source")
+    //        val src = env.fromSource(mysqlSource, WatermarkStrategy.noWatermarks[String](), "Mysql CDC Source")
     val src = env.fromSource(mysqlSource, WatermarkStrategy.noWatermarks[JSONObject](), "Mysql CDC Source")
-      .uid("src")
+      .setParallelism(2).uid("src")
       .asInstanceOf[DataStream[JSONObject]]
 
     val sink = KafkaSink.builder()
       .setRecordSerializer(KafkaRecordSerializationSchema.builder()
         .setTopic(topic)
+        //        .setTopicSelector(new TopicSelector[JSONObject] {
+        //          override def apply(t: JSONObject): String = {
+        //            //    t.getString("db")+t.getString("table")
+        //            topic
+        //          }
+        //        })
         .setPartitioner(new MyShardPartitioner)
         .setKeySerializationSchema(new MyKeySerializationSchema)
         .setValueSerializationSchema(new MyValueSerializationSchema)
@@ -69,7 +79,7 @@ object MysqlCDCDemo {
       .setKafkaProducerConfig(KafkaUtils.getDefaultProp(false))
       .build()
 
-//    src.print()
+    //    src.print()
     src.sinkTo(sink).uid("sink")
 
     env.execute(getClass.getSimpleName.stripSuffix("$"))

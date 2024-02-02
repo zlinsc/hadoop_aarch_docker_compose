@@ -64,21 +64,26 @@ object MysqlCDC2Kafka {
     val jobIDCacheDir = conf.getString("flink.jobidCache")
     println(jobIDCacheDir + appName)
     val jobidPath = new Path(jobIDCacheDir + appName)
-    val fs = HadoopUtils.fileSys
-    if (fs.exists(jobidPath)) {
-      val lastJobID = HadoopUtils.getFileContent(jobidPath)
-      if (lastJobID.nonEmpty) {
-        val lastSavePath = HadoopUtils.getNewestFile(ckpDir + lastJobID)
-        if (lastSavePath != null) {
-          configuration.setString("execution.savepoint.path", lastSavePath.toString)
-          println("use savepoint: " + lastSavePath)
-        } else println("savepoint is not found on path: " + ckpDir + lastJobID)
-      } else println("cache file is empty")
-    } else println("first time to create this app with name " + appName)
+    val lastSavePath = HadoopUtils.getLatestValidSavepointPath(jobidPath, ckpDir)
+    if (lastSavePath.nonEmpty) {
+      configuration.setString("execution.savepoint.path", lastSavePath)
+      println("use savepoint: " + lastSavePath)
+    }
+    //    val fs = HadoopUtils.fileSys
+    //    if (fs.exists(jobidPath)) {
+    //      val lastJobID = HadoopUtils.getFileContent(jobidPath)
+    //      if (lastJobID.nonEmpty) {
+    //        val lastSavePath = HadoopUtils.getNewestFile(ckpDir + lastJobID)
+    //        if (lastSavePath != null) {
+    //          configuration.setString("execution.savepoint.path", lastSavePath.toString)
+    //          println("use savepoint: " + lastSavePath)
+    //        } else println("savepoint is not found on path: " + ckpDir + lastJobID)
+    //      } else println("cache file is empty")
+    //    } else println("first time to create this app with name " + appName)
 
     //// flink config
     val env = StreamExecutionEnvironment.getExecutionEnvironment(configuration)
-    env.enableCheckpointing(60000, CheckpointingMode.EXACTLY_ONCE)
+    env.enableCheckpointing(60000, CheckpointingMode.AT_LEAST_ONCE)
     env.setStateBackend(new EmbeddedRocksDBStateBackend(true))
     val chCfg = env.getCheckpointConfig
     chCfg.setCheckpointStorage(ckpDir)
@@ -237,8 +242,31 @@ object MysqlCDC2Kafka {
       }
     }).setParallelism(rootParallel).uid("output-tag")
 
-    tagMap.map { case (x, tag) =>
-      val bucketParallel = Math.min(bucketMap(x), 16)
+    //    val sink = KafkaSink.builder()
+    //      .setRecordSerializer(KafkaRecordSerializationSchema.builder()
+    //        //        .setTopic(topic)
+    //        .setTopicSelector(new TopicSelector[JSONObject] {
+    //          override def apply(t: JSONObject): String = {
+    //            val regex = "_\\d+$".r
+    //            val targetDB = regex.replaceAllIn(t.getString("db"), "")
+    //            val targetTable = regex.replaceAllIn(t.getString("table"), "")
+    //            val topic = "t_%s_%s".format(targetDB, targetTable)
+    //            topic
+    //          }
+    //        })
+    //        .setPartitioner(new MyShardPartitioner)
+    //        .setKeySerializationSchema(new MyKeySerializationSchema)
+    //        .setValueSerializationSchema(new MyValueSerializationSchema)
+    //        .build()
+    //      )
+    //      //      .setDeliveryGuarantee(DeliveryGuarantee.EXACTLY_ONCE)
+    //      .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
+    //      .setTransactionalIdPrefix(System.currentTimeMillis().toString)
+    //      .setKafkaProducerConfig(KafkaUtils.getDefaultProp(true))
+    //      .build()
+
+    val srcByTagList = tagMap.map { case (x, tag) =>
+      val bucketParallel = Math.min(bucketMap(x), 4)
 
       val srcByTag = mainStream.getSideOutput(tag).asInstanceOf[DataStream[RecPack]]
         .keyBy(new KeySelector[RecPack, Int] with ResultTypeQueryable[RecPack] {
@@ -246,12 +274,12 @@ object MysqlCDC2Kafka {
 
           override def getProducedType: TypeInformation[RecPack] = TypeInformation.of(classOf[RecPack])
         }).process(new KeyedProcessFunction[Int, RecPack, JSONObject] {
-        override def processElement(in: RecPack,
-                                    ctx: KeyedProcessFunction[Int, RecPack, JSONObject]#Context,
-                                    out: Collector[JSONObject]): Unit = {
-          out.collect(in.row)
-        }
-      }).setParallelism(bucketParallel).uid("dist:" + x)
+          override def processElement(in: RecPack,
+                                      ctx: KeyedProcessFunction[Int, RecPack, JSONObject]#Context,
+                                      out: Collector[JSONObject]): Unit = {
+            out.collect(in.row)
+          }
+        }).setParallelism(bucketParallel).uid("dist:" + x)
 
       //// kafka sink
       val targetArr = x.split("\\.")
@@ -267,12 +295,15 @@ object MysqlCDC2Kafka {
           .setValueSerializationSchema(new MyValueSerializationSchema)
           .build()
         )
-        .setDeliveryGuarantee(DeliveryGuarantee.EXACTLY_ONCE)
+        //      .setDeliveryGuarantee(DeliveryGuarantee.EXACTLY_ONCE)
+        .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
         .setTransactionalIdPrefix(System.currentTimeMillis().toString)
         .setKafkaProducerConfig(KafkaUtils.getDefaultProp(true))
         .build()
       srcByTag.sinkTo(sink).setParallelism(bucketParallel).uid("sink2Kafka:" + x).name(x)
+      //      srcByTag.asInstanceOf[DataStream[JSONObject]]
     }
+    //    srcByTagList.reduce((u1, u2) => u1.union(u2)).sinkTo(sink).setParallelism(16).uid("sink2Kafka")
 
     //// execute
     val jobName = getClass.getSimpleName + appName

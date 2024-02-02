@@ -36,6 +36,7 @@ class ShardDeserializationRuntimeConverterFactory(shardingVal: String) extends D
   }
 
   private def createRowConverter(rowType: RowType, serverTimeZone: ZoneId): DeserializationRuntimeConverter = {
+    // rowType include WRITE_TIME_COL,SHARDING_COL
     val arity = rowType.getFieldCount
     val fieldConverters = getFieldConverters(rowType, serverTimeZone)
 
@@ -56,17 +57,16 @@ class ShardDeserializationRuntimeConverterFactory(shardingVal: String) extends D
         val convertedFieldOfSharding = convertField(fieldConverters(1), shardingVal, Schema.STRING_SCHEMA)
         row.setField(1, convertedFieldOfSharding)
         // data columns
-        for (i <- 0 until arity) {
-          val j = i + 2
-          if (i >= fieldsListSize) {
+        for (i <- 2 until arity) {
+          if (i >= 2 + fieldsListSize) {
             LOG.warn("column index %d is missing".format(i))
-            row.setField(j, null)
+            row.setField(i, null)
           } else {
-            val fieldName = fieldsList.get(i).name()
+            val fieldName = fieldsList.get(i - 2).name()
             val fieldValue = struct.getWithoutDefault(fieldName)
             val fieldSchema = schema.field(fieldName).schema()
-            val convertedField = convertField(fieldConverters(j), fieldValue, fieldSchema)
-            row.setField(j, convertedField)
+            val convertedField = convertField(fieldConverters(i), fieldValue, fieldSchema)
+            row.setField(i, convertedField)
           }
         }
         row

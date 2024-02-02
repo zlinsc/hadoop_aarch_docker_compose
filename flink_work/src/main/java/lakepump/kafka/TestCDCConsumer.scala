@@ -32,10 +32,7 @@ object TestCDCConsumer {
     //    private var lastTime: Long = 0
 
     override def processElement(i: (String, String), ctx: KeyedProcessFunction[String, (String, String), String]#Context, collector: Collector[String]): Unit = {
-      LOG.info("xxxxxxxx===:" + i._1 + "," + i._2)
-      //      Thread.sleep(10000)
       //      if (cntCache.contains(i._1)) {
-      ////        LOG.error("xxxxxxxx===:"+i._1+","+cntCache.get(i._1))
       //        if (!cntCache.get(i._1)) {
       //          cntCache.put(i._1, true)
       //          collector.collect(i._1)
@@ -43,37 +40,33 @@ object TestCDCConsumer {
       //      } else {
       //        cntCache.put(i._1, false)
       //      }
+
+      LOG.info("xxxxxxxx===:" + i._1 + "," + i._2)
+      //      if (cntCache.contains(i._1)) {
+      //        cntCache.put(i._1, true)
+      ////        collector.collect(i._1)
+      //      } else {
+      //        cntCache.put(i._1, false)
+      //      }
+      //      val ct = System.currentTimeMillis()
+      //      if (ct > lastTime + 60000) {
+      //        ctx.timerService().registerProcessingTimeTimer(ct)
+      //        lastTime = ct
+      //      }
     }
 
-    //    override def processElement(i: (String, String), ctx: KeyedProcessFunction[String, (String, String), String]#Context, collector: Collector[String]): Unit = {
-    //      if (cntCache.contains(i._1)) {
-    //        LOG.error("xxxxxxx=====:"+i._1)
-    //        cntCache.put(i._1, true)
-    ////        collector.collect(i._1)
-    //      } else {
-    //        LOG.error("xxxxxxx==2222:"+i._1)
-    //        cntCache.put(i._1, false)
-    //      }
-    //      val ct = System.currentTimeMillis()
-    //      if (ct > lastTime + 60000) {
-    //        ctx.timerService().registerProcessingTimeTimer(ct)
-    //        lastTime = ct
-    //      }
-    //    }
-
-    //    override def onTimer(timestamp: Long, ctx: KeyedProcessFunction[String, (String, String), String]#OnTimerContext, out: Collector[String]): Unit = {
-    //      val it = cntCache.keys().iterator()
-    //      var c = 0
-    //      while (it.hasNext) {
-    //        c += 1
-    //        val v = it.next()
-    //        if (cntCache.get(v) && !hasPrint.contains(v)) {
-    //          out.collect(v)
-    //          hasPrint.put(v, false)
-    //        }
-    //      }
-    //      LOG.error("yyyyyy****:"+c)
-    //    }
+    override def onTimer(timestamp: Long, ctx: KeyedProcessFunction[String, (String, String), String]#OnTimerContext, out: Collector[String]): Unit = {
+      //      val it = cntCache.keys().iterator()
+      //      var c = 0
+      //      while (it.hasNext) {
+      //        c += 1
+      //        val v = it.next()
+      //        if (cntCache.get(v) && !hasPrint.contains(v)) {
+      //          out.collect(v)
+      //          hasPrint.put(v, false)
+      //        }
+      //      }
+    }
 
     override def open(parameters: Configuration): Unit = {
       cntCache = getRuntimeContext.getMapState(new MapStateDescriptor[String, Boolean]("cntCache", classOf[String], classOf[Boolean]))
@@ -90,7 +83,7 @@ object TestCDCConsumer {
     val arr = args(0).split('.')
     val (db, table) = (arr(0), arr(1).toUpperCase)
     printf("CDC DB: %s, TABLE: %s\n", db, table)
-    //    val conf = ConfigFactory.load("app_online.conf")
+    //    val conf = ConfigFactory.load("settings_app_online.conf")
     val env = StreamExecutionEnvironment.getExecutionEnvironment()
     //    env.enableCheckpointing(60000, CheckpointingMode.EXACTLY_ONCE)
     //    env.setStateBackend(new EmbeddedRocksDBStateBackend(true))
@@ -135,17 +128,17 @@ object TestCDCConsumer {
       .fromSource(kafkaSource, WatermarkStrategy.noWatermarks[String](), "Kafka Source")
       .uid("src")
     src.map(x => {
-      val arr = x.split("###")
-      var key = ""
-      var rec = ""
-      if (arr.length == 2) {
-        key = arr(0)
-        val matcher = Pattern.compile("\\d+").matcher(key)
-        if (matcher.find) key = matcher.group
-        rec = arr(1)
-      }
-      (key, rec)
-    }).returns(TypeInformation.of(classOf[(String, String)]))
+        val arr = x.split("###")
+        var key = ""
+        var rec = ""
+        if (arr.length == 2) {
+          key = arr(0)
+          val matcher = Pattern.compile("\\d+").matcher(key)
+          if (matcher.find) key = matcher.group
+          rec = arr(1)
+        }
+        (key, rec)
+      }).returns(TypeInformation.of(classOf[(String, String)]))
       //      .filter(x => x._1 == "{\"UID\":227548715}")
       //      .filter(x => uids.contains(x._1))
       //      .filter(x => x._2 == table)
