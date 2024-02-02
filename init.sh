@@ -30,6 +30,7 @@ if [ "$(hostname)" = "master-node" ]; then
     zookeeper-server-start.sh -daemon /home/kafka/config/zookeeper.properties
     kafka-server-start.sh -daemon /home/kafka/config/server.properties
     sleep 1s
+    # kafka-topics.sh --zookeeper localhost:2181 --delete --topic cdctest
     kafka-topics.sh --create --zookeeper localhost:2181 --topic cdctest --partitions 4 --replication-factor 1
 
 elif [ "$(hostname)" = "slave-node" ]; then
