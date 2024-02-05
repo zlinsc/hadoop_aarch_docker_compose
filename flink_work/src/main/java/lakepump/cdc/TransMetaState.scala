@@ -2,24 +2,23 @@ package lakepump.cdc
 
 import com.ververica.cdc.connectors.mysql.source.assigners.AssignerStatus
 import com.ververica.cdc.connectors.mysql.source.assigners.state._
-import com.ververica.cdc.connectors.mysql.source.offset.{BinlogOffset, BinlogOffsetKind}
-import com.ververica.cdc.connectors.mysql.source.split.{FinishedSnapshotSplitInfo, MySqlBinlogSplit, MySqlSchemalessSnapshotSplit, MySqlSnapshotSplit, MySqlSplit, MySqlSplitSerializer}
+import com.ververica.cdc.connectors.mysql.source.offset.BinlogOffset
+import com.ververica.cdc.connectors.mysql.source.split._
 import io.debezium.relational.TableId
 import io.debezium.relational.history.TableChanges
 import org.apache.flink.api.common.state.{ListState, ListStateDescriptor}
 import org.apache.flink.api.common.typeinfo.TypeInformation
-import org.apache.flink.api.common.typeutils.base.array.BytePrimitiveArraySerializer
 import org.apache.flink.api.java.typeutils.TypeExtractor
 import org.apache.flink.contrib.streaming.state.EmbeddedRocksDBStateBackend
 import org.apache.flink.core.fs.{EntropyInjector, Path}
 import org.apache.flink.core.io.SimpleVersionedSerialization
 import org.apache.flink.core.memory.{DataInputDeserializer, DataInputViewStreamWrapper, DataOutputViewStreamWrapper}
-import org.apache.flink.runtime.checkpoint.OperatorState
+import org.apache.flink.runtime.checkpoint.{OperatorState, StateObjectCollection}
 import org.apache.flink.runtime.checkpoint.metadata.CheckpointMetadata
 import org.apache.flink.runtime.source.coordinator.SourceCoordinatorSerdeUtils
+import org.apache.flink.runtime.state._
 import org.apache.flink.runtime.state.filesystem.AbstractFsCheckpointStorageAccess
 import org.apache.flink.runtime.state.memory.ByteStreamStateHandle
-import org.apache.flink.runtime.state._
 import org.apache.flink.state.api.functions.StateBootstrapFunction
 import org.apache.flink.state.api.runtime.SavepointLoader
 import org.apache.flink.state.api.{OperatorIdentifier, OperatorTransformation, SavepointReader, SavepointWriter}
@@ -37,11 +36,17 @@ object TransMetaState {
   val SRC_UID = OperatorIdentifier.forUid("src")
   val SOURCE_READER_STATE = "SourceReaderState"
 
-  def readPendingSplitsState(path: String, operID: String): (OperatorState, PendingSplitsState) = {
+  /** read operator state of operID in path */
+  def readOperatorState(path: String, operID: String): OperatorState = {
     val metadata: CheckpointMetadata = SavepointLoader.loadSavepointMetadata(path)
-    val operatorStates = metadata.getOperatorStates.asScala
-    val operatorState = operatorStates.filter(x => x.getOperatorID.toString == operID).head
-    val stateHandle: ByteStreamStateHandle = operatorState.getCoordinatorState
+    val operStates = metadata.getOperatorStates.asScala
+    operStates.filter(x => x.getOperatorID.toString == operID).head
+  }
+
+  /** read PendingSplitsState from CoordinatorState of operID */
+  def readPendingSplitsState(path: String, operID: String): PendingSplitsState = {
+    val operState = readOperatorState(path, operID)
+    val stateHandle: ByteStreamStateHandle = operState.getCoordinatorState
 
     // coordinatorState解析
     val bais = new ByteArrayInputStream(stateHandle.getData)
@@ -72,19 +77,19 @@ object TransMetaState {
           LOG.info("BinlogPendingSplitsState: {}", x)
           x
       }
-      (operatorState, pendingSplitsState)
+      pendingSplitsState
     } catch {
       case e: Throwable =>
         LOG.error("fail to deserialize PendingSplitsState, ", e)
-        (operatorState, null)
+        null
     } finally {
       in.close()
       bais.close()
     }
   }
 
-  def transformSrcState(env: StreamExecutionEnvironment, oldPath: String, gtidsNew: String): Unit = {
-    /** 1. modify checkpoint operator state (_metadata/uuid) */
+  /** modify checkpoint operator state (_metadata/uuid) */
+  def modifyCheckpointOperatorState(env: StreamExecutionEnvironment, oldPath: String) = {
     /* read reader state from old path */
     val byteArrayType: TypeInformation[Array[Byte]] = TypeExtractor.getForClass(classOf[Array[Byte]])
     val reader = SavepointReader.read(env, oldPath, new EmbeddedRocksDBStateBackend(true))
@@ -134,83 +139,64 @@ object TransMetaState {
     val idx = oldPath.lastIndexOf("-") + 1
     val newPath = oldPath.substring(0, idx) + (oldPath.substring(idx).toLong + diffVersion).toString
     //      val writer = SavepointWriter.fromExistingSavepoint(env, oldPath, new EmbeddedRocksDBStateBackend(true))
-    val writer = SavepointWriter.newSavepoint(env, new EmbeddedRocksDBStateBackend(true), 2)
+    //    val writer = SavepointWriter.newSavepoint(env, new EmbeddedRocksDBStateBackend(true), 2)
     //    writer.withOperator(identifier, trans).write(newPath)
+  }
 
-    /** 2. transfer coordinator state and save to metadata (_metadata) */
-    /* generate new pending splits state */
-    val tbls = "test_db.cdc_order"
-    val alreadyProcessedTables = ArrayBuffer[TableId]()
-    for (t <- tbls.split(",")) {
-      val arr = t.split("\\.")
-      alreadyProcessedTables += new TableId(arr(0), null, arr(1))
-    }
-    val remainingTables = Seq[TableId]().asJava
-    val remainingSplits = Seq[MySqlSchemalessSnapshotSplit]().asJava
-    val assignedSplits = Map[String, MySqlSchemalessSnapshotSplit]().asJava
-    val splitFinishedOffsets = Map[String, BinlogOffset]().asJava
-    val tableSchemas = Map[TableId, TableChanges.TableChange]().asJava
-    val assignerStatus = AssignerStatus.INITIAL_ASSIGNING
-    val isTableIdCaseSensitive = true
-    val state = new SnapshotPendingSplitsState(
-      alreadyProcessedTables.asJava,
-      remainingSplits,
-      assignedSplits,
-      tableSchemas,
-      splitFinishedOffsets,
-      assignerStatus,
-      remainingTables,
-      isTableIdCaseSensitive,
-      true,
-      new ChunkSplitterState(null, null, null))
-    val isBinlogSplitAssigned = true
-    val pendingSplitsState = new HybridPendingSplitsState(state, isBinlogSplitAssigned)
+  /** transfer coordinator state and save to metadata */
+  def transformSrcState(oldPath: String, gtidsNew: String): Unit = {
 
-    /* read coordinator state from old path */
+    /** read operator state from old path */
+
+    // get operator info
     val operID = SRC_UID.getOperatorId
     val operIDStr = operID.toHexString
-    val (coordinatorState, pendingSplitsStateOld) = readPendingSplitsState(oldPath, operIDStr)
+    val operState = readOperatorState(oldPath, operIDStr) // kick off
 
-    /* clone and redefine new operator state */
+    // clone a new one
+    val newOperState: OperatorState = new OperatorState(operID, operState.getParallelism, operState.getMaxParallelism)
+
+    /** subtask state */
+
     // PartitionableListState reflection
     val partitionableListStateClass = Class.forName("org.apache.flink.runtime.state.PartitionableListState")
     val constructor = partitionableListStateClass.getDeclaredConstructor(
       classOf[RegisteredOperatorStateBackendMetaInfo[Any]])
     constructor.setAccessible(true)
-    // deserialize OperatorState
-    val newOperatorState = coordinatorState.copyWithNewOperatorID(operID)
-    LOG.info("xxxx={}", newOperatorState.toString)
-    for (x <- newOperatorState.getSubtaskStates.entrySet().asScala) {
-      LOG.info("xxxx={} : {}", x.getKey, x.getValue.toString: Any)
+
+    // iterate each subtask state
+    for (x <- operState.getSubtaskStates.entrySet().asScala) {
+      //      LOG.info("xxxx={}:{}", x.getKey, x.getValue.toString: Any) // 0:SubtaskState
+      val operSubtaskState = x.getValue
+      val claz = operSubtaskState.getClass
+      val field = claz.getDeclaredField("managedOperatorState")
+      field.setAccessible(true)
+      val managedOperState = field.get(x).asInstanceOf[StateObjectCollection[OperatorStateHandle]]
 
       // MetadataV2V3SerializerBase#deserializeOperatorStateHandle
-      val stateHandle: OperatorStateHandle = x.getValue.getManagedOperatorState.iterator().next()
+      val managedOperStateHandle: OperatorStateHandle = managedOperState.iterator().next()
 
       // OperatorStateRestoreOperation#restore
-      val inputStream = stateHandle.openInputStream
+      val inputStream = managedOperStateHandle.openInputStream
       val userClassloader = ClassLoader.getSystemClassLoader
       val backendSerializationProxy = new OperatorBackendSerializationProxy(userClassloader)
       backendSerializationProxy.read(new DataInputViewStreamWrapper(inputStream))
-
-      val restoredOperatorMetaInfoSnapshots = backendSerializationProxy.getOperatorStateMetaInfoSnapshots
-      val registeredOperatorStates = mutable.Map[String, PartitionableListState[Any]]()
-      for (restoredSnapshot <- restoredOperatorMetaInfoSnapshots.asScala) {
+      val restoredOperMetaInfoSnapshots = backendSerializationProxy.getOperatorStateMetaInfoSnapshots
+      val registeredOperStates = mutable.Map[String, PartitionableListState[Any]]()
+      for (restoredSnapshot <- restoredOperMetaInfoSnapshots.asScala) {
         val restoredMetaInfo = new RegisteredOperatorStateBackendMetaInfo(restoredSnapshot)
         val listState = constructor.newInstance(restoredMetaInfo).asInstanceOf[PartitionableListState[Any]]
-        registeredOperatorStates.put(listState.getStateMetaInfo.getName, listState)
+        registeredOperStates.put(listState.getStateMetaInfo.getName, listState)
       }
 
-      // create new OperatorStreamStateHandle
-
-
       // iterate
-      for (nameToOffsets <- stateHandle.getStateNameToPartitionOffsets.entrySet().asScala) {
+      for (nameToOffsets <- managedOperStateHandle.getStateNameToPartitionOffsets.entrySet().asScala) {
         if (nameToOffsets.getKey == SOURCE_READER_STATE) {
-          val stateListForName = registeredOperatorStates.getOrElse(SOURCE_READER_STATE, null)
+          val stateListForName = registeredOperStates.getOrElse(SOURCE_READER_STATE, null)
           if (stateListForName != null) {
             val stateListForNameNew = stateListForName.deepCopy()
             stateListForNameNew.clear()
-            val metaInfo = nameToOffsets.getValue
+            val metaInfo: OperatorStateHandle.StateMetaInfo = nameToOffsets.getValue
 
             // OperatorStateRestoreOperation#deserializeOperatorStateValues
             if (null != metaInfo) {
@@ -242,7 +228,7 @@ object TransMetaState {
                         x.getTotalFinishedSplitSize,
                         false)
                       val dataNew = SimpleVersionedSerialization.writeVersionAndSerialize(splitSerializer, mysqlSplitNew)
-//                      typeSerializer.asInstanceOf[BytePrimitiveArraySerializer].serialize(dataNew, dov)
+                      //                      typeSerializer.asInstanceOf[BytePrimitiveArraySerializer].serialize(dataNew, dov)
                       stateListForNameNew.add(dataNew)
 
                     case _: MySqlSnapshotSplit =>
@@ -251,7 +237,9 @@ object TransMetaState {
                   }
                 }
                 //
-//                val dov = new DataOutputViewStreamWrapper(out)
+                val outputStream = new ByteArrayOutputStream()
+                val dov = new DataOutputViewStreamWrapper(outputStream)
+
               }
             }
           }
@@ -259,7 +247,37 @@ object TransMetaState {
       }
     }
 
-    /* add new coordinator state to operator state */
+    /** create a new coordinator state */
+
+    // generate new pending splits state
+    val tbls = "test_db.cdc_order"
+    val alreadyProcessedTables = ArrayBuffer[TableId]()
+    for (t <- tbls.split(",")) {
+      val arr = t.split("\\.")
+      alreadyProcessedTables += new TableId(arr(0), null, arr(1))
+    }
+    val remainingTables = Seq[TableId]().asJava
+    val remainingSplits = Seq[MySqlSchemalessSnapshotSplit]().asJava
+    val assignedSplits = Map[String, MySqlSchemalessSnapshotSplit]().asJava
+    val splitFinishedOffsets = Map[String, BinlogOffset]().asJava
+    val tableSchemas = Map[TableId, TableChanges.TableChange]().asJava
+    val assignerStatus = AssignerStatus.INITIAL_ASSIGNING
+    val isTableIdCaseSensitive = true
+    val state = new SnapshotPendingSplitsState(
+      alreadyProcessedTables.asJava,
+      remainingSplits,
+      assignedSplits,
+      tableSchemas,
+      splitFinishedOffsets,
+      assignerStatus,
+      remainingTables,
+      isTableIdCaseSensitive,
+      true,
+      new ChunkSplitterState(null, null, null))
+    val isBinlogSplitAssigned = true
+    val pendingSplitsState = new HybridPendingSplitsState(state, isBinlogSplitAssigned)
+
+    // serialize coordinator state
     val baos = new ByteArrayOutputStream()
     val out = new DataOutputStream(new DataOutputViewStreamWrapper(baos))
     try {
@@ -271,9 +289,9 @@ object TransMetaState {
       out.write(serializedEnumChkpt)
       out.flush()
       val resultByteArray = baos.toByteArray
-      val stateHandle = coordinatorState.getCoordinatorState
+      val stateHandle = operState.getCoordinatorState
       val newStateHandle = new ByteStreamStateHandle(stateHandle.getHandleName, resultByteArray)
-      newOperatorState.setCoordinatorState(newStateHandle)
+      newOperState.setCoordinatorState(newStateHandle)
     } catch {
       case e: Throwable =>
         throw new Exception("fail to generate coordinator state", e)
@@ -282,11 +300,15 @@ object TransMetaState {
       baos.close()
     }
 
-    // generate new checkpoint metadata
+    /** generate new checkpoint metadata */
+    val diffVersion = 2000
+    val idx = oldPath.lastIndexOf("-") + 1
+    val newPath = oldPath.substring(0, idx) + (oldPath.substring(idx).toLong + diffVersion).toString
+
     val metadata = SavepointLoader.loadSavepointMetadata(oldPath)
     //      val reservedOperatorStates = metadata.getOperatorStates.asScala.filter(x => x.getOperatorID.toString != operIDStr)
     val newCkpId = metadata.getCheckpointId + diffVersion
-    val collect = Iterable(newOperatorState) //++ reservedOperatorStates
+    val collect = Iterable(newOperState) //++ reservedOperatorStates
     val ckpMeta = new CheckpointMetadata(newCkpId, collect.asJavaCollection, metadata.getMasterStates,
       metadata.getCheckpointProperties)
 
@@ -306,7 +328,7 @@ object TransMetaState {
     /** path like hdfs://master-node:50070/user/root/ckp/d3bd6ff35e3dea9d0d75681cd9210941/chk-6 */
     val oldPath = args(0)
     val gtids = args(1)
-    transformSrcState(env, oldPath, gtids)
+    transformSrcState(oldPath, gtids)
 
     env.fromElements(0).print()
     env.execute(getClass.getSimpleName.stripSuffix("$"))
