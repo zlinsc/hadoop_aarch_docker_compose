@@ -29,6 +29,7 @@ import java.io.{ByteArrayInputStream, ByteArrayOutputStream, DataOutputStream}
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
+import scala.util.control.Breaks.{break, breakable}
 
 object TransMetaState {
   val LOG: Logger = LoggerFactory.getLogger(getClass)
@@ -156,7 +157,7 @@ object TransMetaState {
     // clone a new one
     val newOperState: OperatorState = new OperatorState(operID, operState.getParallelism, operState.getMaxParallelism)
 
-    /** subtask state */
+    /** modify subtask state */
 
     // PartitionableListState reflection
     val partitionableListStateClass = Class.forName("org.apache.flink.runtime.state.PartitionableListState")
@@ -189,62 +190,61 @@ object TransMetaState {
         registeredOperStates.put(listState.getStateMetaInfo.getName, listState)
       }
 
-      // iterate
-      for (nameToOffsets <- managedOperStateHandle.getStateNameToPartitionOffsets.entrySet().asScala) {
-        if (nameToOffsets.getKey == SOURCE_READER_STATE) {
-          val stateListForName = registeredOperStates.getOrElse(SOURCE_READER_STATE, null)
-          if (stateListForName != null) {
-            val stateListForNameNew = stateListForName.deepCopy()
-            stateListForNameNew.clear()
-            val metaInfo: OperatorStateHandle.StateMetaInfo = nameToOffsets.getValue
+      // filter SOURCE_READER_STATE to update managedOperStateHandle
+      breakable(for (nameToOffsets <- managedOperStateHandle.getStateNameToPartitionOffsets.entrySet().asScala) {
+        if (nameToOffsets.getKey != SOURCE_READER_STATE) break()
+        val stateListForName: PartitionableListState[Any] = registeredOperStates.getOrElse(SOURCE_READER_STATE, null)
+        if (stateListForName == null) break()
 
-            // OperatorStateRestoreOperation#deserializeOperatorStateValues
-            if (null != metaInfo) {
-              val offsets = metaInfo.getOffsets
-              if (null != offsets) {
-                val div = new DataInputViewStreamWrapper(inputStream)
-                val typeSerializer = stateListForName.getStateMetaInfo.getPartitionStateSerializer
-                for (offset <- offsets) {
-                  inputStream.seek(offset)
+        // create new list state storage
+        val stateListForNameNew = stateListForName.deepCopy()
+        stateListForNameNew.clear()
 
-                  // SimpleVersionedSerialization#readVersionAndDeSerialize
-                  val data: Array[Byte] = typeSerializer.deserialize(div).asInstanceOf[Array[Byte]]
-                  val splitSerializer = new MySqlSplitSerializer
-                  val mysqlSplit = SimpleVersionedSerialization.readVersionAndDeSerialize(splitSerializer, data)
-                  mysqlSplit match {
-                    case x: MySqlBinlogSplit =>
-                      // create a new split
-                      val startingOffset = BinlogOffset.builder()
-                        .setServerId(x.getStartingOffset.getServerId)
-                        .setGtidSet(gtidsNew)
-                        .build()
-                      val finishedSplitsInfo = List[FinishedSnapshotSplitInfo]()
-                      val mysqlSplitNew = new MySqlBinlogSplit(
-                        "binlog-split",
-                        startingOffset,
-                        BinlogOffset.ofNonStopping,
-                        finishedSplitsInfo.asJava,
-                        x.getTableSchemas,
-                        x.getTotalFinishedSplitSize,
-                        false)
-                      val dataNew = SimpleVersionedSerialization.writeVersionAndSerialize(splitSerializer, mysqlSplitNew)
-                      //                      typeSerializer.asInstanceOf[BytePrimitiveArraySerializer].serialize(dataNew, dov)
-                      stateListForNameNew.add(dataNew)
+        // OperatorStateRestoreOperation#deserializeOperatorStateValues
+        val metaInfo: OperatorStateHandle.StateMetaInfo = nameToOffsets.getValue
+        if (null == metaInfo) break()
+        val offsets = metaInfo.getOffsets
+        if (null == offsets) break()
+        val div = new DataInputViewStreamWrapper(inputStream)
+        val typeSerializer = stateListForName.getStateMetaInfo.getPartitionStateSerializer
+        for (offset <- offsets) {
+          inputStream.seek(offset)
 
-                    case _: MySqlSnapshotSplit =>
-                    case _ =>
-                      throw new Exception("unknow state type")
-                  }
-                }
-                //
-                val outputStream = new ByteArrayOutputStream()
-                val dov = new DataOutputViewStreamWrapper(outputStream)
+          // SimpleVersionedSerialization#readVersionAndDeSerialize
+          val data: Array[Byte] = typeSerializer.deserialize(div).asInstanceOf[Array[Byte]]
+          val splitSerializer = new MySqlSplitSerializer
+          val mysqlSplit = SimpleVersionedSerialization.readVersionAndDeSerialize(splitSerializer, data)
+          mysqlSplit match {
+            case x: MySqlBinlogSplit =>
 
-              }
-            }
+              // create a new binlog split
+              val startingOffset = BinlogOffset.builder()
+                .setServerId(x.getStartingOffset.getServerId)
+                .setGtidSet(gtidsNew)
+                .build()
+              val finishedSplitsInfo = List[FinishedSnapshotSplitInfo]()
+              val mysqlSplitNew = new MySqlBinlogSplit(
+                "binlog-split",
+                startingOffset,
+                BinlogOffset.ofNonStopping,
+                finishedSplitsInfo.asJava,
+                x.getTableSchemas,
+                x.getTotalFinishedSplitSize,
+                false)
+              val dataNew = SimpleVersionedSerialization.writeVersionAndSerialize(splitSerializer, mysqlSplitNew)
+              //                      typeSerializer.asInstanceOf[BytePrimitiveArraySerializer].serialize(dataNew, dov)
+              stateListForNameNew.add(dataNew)
+
+            case _: MySqlSnapshotSplit =>
+            case _ =>
+              throw new Exception("unknow state type")
           }
         }
-      }
+        //
+        val outputStream = new ByteArrayOutputStream()
+        val dov = new DataOutputViewStreamWrapper(outputStream)
+
+      })
     }
 
     /** create a new coordinator state */
