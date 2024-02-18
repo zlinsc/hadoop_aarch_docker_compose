@@ -6,31 +6,29 @@ import com.ververica.cdc.connectors.mysql.source.offset.BinlogOffset
 import com.ververica.cdc.connectors.mysql.source.split._
 import io.debezium.relational.TableId
 import io.debezium.relational.history.TableChanges
-import org.apache.flink.api.common.state.{ListState, ListStateDescriptor}
-import org.apache.flink.api.common.typeinfo.TypeInformation
-import org.apache.flink.api.java.typeutils.TypeExtractor
-import org.apache.flink.contrib.streaming.state.EmbeddedRocksDBStateBackend
+import org.apache.flink.configuration.CheckpointingOptions
 import org.apache.flink.core.fs.{EntropyInjector, Path}
 import org.apache.flink.core.io.SimpleVersionedSerialization
 import org.apache.flink.core.memory.{DataInputDeserializer, DataInputViewStreamWrapper, DataOutputViewStreamWrapper}
 import org.apache.flink.runtime.checkpoint.metadata.CheckpointMetadata
-import org.apache.flink.runtime.checkpoint.{OperatorState, OperatorSubtaskState, StateObjectCollection}
+import org.apache.flink.runtime.checkpoint.{Checkpoints, OperatorState, StateObjectCollection}
 import org.apache.flink.runtime.source.coordinator.SourceCoordinatorSerdeUtils
 import org.apache.flink.runtime.state.OperatorStateHandle.StateMetaInfo
 import org.apache.flink.runtime.state._
-import org.apache.flink.runtime.state.filesystem.{AbstractFsCheckpointStorageAccess, RelativeFileStateHandle}
+import org.apache.flink.runtime.state.filesystem.{AbstractFsCheckpointStorageAccess, FsCheckpointMetadataOutputStream, FsCheckpointStorageLocation}
 import org.apache.flink.runtime.state.memory.ByteStreamStateHandle
-import org.apache.flink.state.api.functions.StateBootstrapFunction
+import org.apache.flink.runtime.state.metainfo.StateMetaInfoSnapshot
+import org.apache.flink.state.api.OperatorIdentifier
 import org.apache.flink.state.api.runtime.SavepointLoader
-import org.apache.flink.state.api.{OperatorIdentifier, OperatorTransformation, SavepointReader}
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
+import org.apache.flink.util.MathUtils
 import org.slf4j.{Logger, LoggerFactory}
 
-import java.io.{ByteArrayInputStream, ByteArrayOutputStream, DataOutputStream}
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream, DataOutputStream, IOException}
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-import scala.util.control.Breaks.{break, breakable}
+import scala.util.control.Breaks.break
 
 object TransMetaState {
   val LOG: Logger = LoggerFactory.getLogger(getClass)
@@ -85,7 +83,7 @@ object TransMetaState {
   }
 
   /** modify checkpoint operator state (_metadata/uuid) */
-  def modifyCheckpointOperatorState(env: StreamExecutionEnvironment, oldPath: String) = {
+  /*def modifyCheckpointOperatorState(env: StreamExecutionEnvironment, oldPath: String) = {
     /* read reader state from old path */
     val byteArrayType: TypeInformation[Array[Byte]] = TypeExtractor.getForClass(classOf[Array[Byte]])
     val reader = SavepointReader.read(env, oldPath, new EmbeddedRocksDBStateBackend(true))
@@ -136,7 +134,7 @@ object TransMetaState {
     //      val writer = SavepointWriter.fromExistingSavepoint(env, oldPath, new EmbeddedRocksDBStateBackend(true))
     //    val writer = SavepointWriter.newSavepoint(env, new EmbeddedRocksDBStateBackend(true), 2)
     //    writer.withOperator(identifier, trans).write(newPath)
-  }
+  }*/
 
   /** read operator state of operID in path */
   private def readOperatorState(metadata: CheckpointMetadata, operID: String): OperatorState = {
@@ -148,34 +146,48 @@ object TransMetaState {
   /** transfer coordinator state and save to metadata */
   def transformSrcState(oldPath: String, gtidsNew: String): Unit = {
 
-    /** read operator state from old path */
+    // new metadata path
+    val idx = oldPath.lastIndexOf("-") + 1
+    val chkSubPath = AbstractFsCheckpointStorageAccess.CHECKPOINT_DIR_PREFIX +
+      (oldPath.substring(idx).toLong + ADD_VERSION).toString
+    val rootPath = oldPath.substring(0, oldPath.lastIndexOf("/") + 1)
+    val checkpointDir = new Path(rootPath + chkSubPath)
+    val fileSystem = checkpointDir.getFileSystem
 
-    /* get operator info */
+    // read operator state from old path
     val operID = SRC_UID.getOperatorId
     val operIDStr = operID.toHexString
-    val metadata: CheckpointMetadata = SavepointLoader.loadSavepointMetadata(oldPath) // kick off
+    val metadata = SavepointLoader.loadSavepointMetadata(oldPath) // kick off
     val ckpId = metadata.getCheckpointId
+    val ckpIdNew = ckpId + ADD_VERSION
     val operState = readOperatorState(metadata, operIDStr)
 
-    /* clone a new one */
-    val newOperState: OperatorState = new OperatorState(operID, operState.getParallelism, operState.getMaxParallelism)
+    // clone a new one
+    val newOperState = new OperatorState(operID, operState.getParallelism, operState.getMaxParallelism)
 
-    /** modify subtask state */
-
-    /* reflect PartitionableListState constructor */
-    val partitionableListStateClass = Class.forName("org.apache.flink.runtime.state.PartitionableListState")
-    val constructPartListState = partitionableListStateClass.getDeclaredConstructor(
-      classOf[RegisteredOperatorStateBackendMetaInfo[Any]])
+    // reflect PartitionableListState constructor
+    val constructPartListState = Class.forName("org.apache.flink.runtime.state.PartitionableListState")
+      .getDeclaredConstructor(classOf[RegisteredOperatorStateBackendMetaInfo[Any]])
     constructPartListState.setAccessible(true)
 
-    /* iterate each subtask state */
+    // iterate each subtask state
     val splitSerializer = new MySqlSplitSerializer
     for (es <- operState.getSubtaskStates.entrySet().asScala) {
-      val subtaskIndex: Int = es.getKey
-      val operSubtaskState: OperatorSubtaskState = es.getValue
+      val subtaskIndex = es.getKey
+      val operSubtaskState = es.getValue
       //      LOG.info("vvvv={}:{}", subtaskIndex, operSubtaskState.toString: Any)
 
-      /* extract managed operator state handle in subtask state */
+      // create output stream
+      val sharedStateDir = new Path(rootPath, AbstractFsCheckpointStorageAccess.CHECKPOINT_SHARED_STATE_DIR)
+      val taskOwnedStateDir = new Path(rootPath, AbstractFsCheckpointStorageAccess.CHECKPOINT_TASK_OWNED_STATE_DIR)
+      val fileStateSizeThreshold =
+        MathUtils.checkedDownCast(CheckpointingOptions.FS_SMALL_FILE_THRESHOLD.defaultValue().getBytes)
+      val writeBufferSize = fileStateSizeThreshold
+      val factory = new FsCheckpointStorageLocation(fileSystem, checkpointDir, sharedStateDir, taskOwnedStateDir,
+        CheckpointStorageLocationReference.getDefault, fileStateSizeThreshold, writeBufferSize)
+      val localOut = factory.createCheckpointStateOutputStream(CheckpointedStateScope.EXCLUSIVE)
+
+      // extract managed operator state handle in subtask state
       // need to set managed operator state explicitly because it's only accessible to builder
       val claz = operSubtaskState.getClass
       val fieldManagedOperatorState = claz.getDeclaredField("managedOperatorState")
@@ -183,101 +195,112 @@ object TransMetaState {
       val managedOperState = fieldManagedOperatorState.get(operSubtaskState)
         .asInstanceOf[StateObjectCollection[OperatorStateHandle]]
       // FOLLOW MetadataV2V3SerializerBase#deserializeOperatorStateHandle
-      val managedOperStateHandle: OperatorStateHandle = managedOperState.iterator().next()
+      val managedOperStateHandle = managedOperState.iterator().next()
 
-      /* get delegateStateHandle(StreamStateHandle) */
-      // may be ByteStreamStateHandle/RelativeFileStateHandle
-      val delegateStateHandle = managedOperStateHandle.getDelegateStateHandle
+      /** belong to OperatorStreamStateHandle */
+      // get delegateStateHandle(StreamStateHandle, may be ByteStreamStateHandle/RelativeFileStateHandle)
+      // then open it as input stream
+      val in = managedOperStateHandle.openInputStream
+      val div = new DataInputViewStreamWrapper(in)
 
-      /* read byte content */
+      /** belong to OperatorStreamStateHandle.StreamStateHandle */
+      val operMetaInfoSnapshotsNew = new ArrayBuffer[StateMetaInfoSnapshot]()
+      val broadMetaInfoSnapshotsNew = new ArrayBuffer[StateMetaInfoSnapshot]()
       // FOLLOW OperatorStateRestoreOperation#restore
+      // read data header using proxy
       val backendSerializationProxy = new OperatorBackendSerializationProxy(ClassLoader.getSystemClassLoader)
-      backendSerializationProxy.read(new DataInputViewStreamWrapper(managedOperStateHandle.openInputStream))
+      backendSerializationProxy.read(div)
       // read PartitionableListState and build a map
       val restoredOperMetaInfoSnapshots = backendSerializationProxy.getOperatorStateMetaInfoSnapshots
       val registeredOperStates = mutable.Map[String, PartitionableListState[Any]]()
       for (restoredSnapshot <- restoredOperMetaInfoSnapshots.asScala) {
         val restoredMetaInfo = new RegisteredOperatorStateBackendMetaInfo(restoredSnapshot)
         val listState = constructPartListState.newInstance(restoredMetaInfo).asInstanceOf[PartitionableListState[Any]]
-        registeredOperStates.put(listState.getStateMetaInfo.getName, listState)
+        val stateName = listState.getStateMetaInfo.getName
+        registeredOperStates.put(stateName, listState)
+        if (stateName == SOURCE_READER_STATE) operMetaInfoSnapshotsNew += listState.getStateMetaInfo.snapshot()
       }
+      // create new OperatorBackendSerializationProxy to write
+      val dov = new DataOutputViewStreamWrapper(localOut)
+      val backendSerializationProxyNew =
+        new OperatorBackendSerializationProxy(operMetaInfoSnapshotsNew.asJava, broadMetaInfoSnapshotsNew.asJava)
+      backendSerializationProxyNew.write(dov)
 
-      /* read StateMetaInfo */
-      // open delegateStateHandle as input stream
-      val in = managedOperStateHandle.openInputStream
+      /** belong to OperatorStreamStateHandle */
       // partOffsets := Map[String, StateMetaInfo]
-      val partOffsets = managedOperStateHandle.getStateNameToPartitionOffsets
+      //      val partOffsets = managedOperStateHandle.getStateNameToPartitionOffsets
       val partOffsetsNew = mutable.Map[String, StateMetaInfo]()
-      breakable(for (nameToOffsets <- partOffsets.entrySet().asScala) {
-        // only pass SOURCE_READER_STATE
-        if (nameToOffsets.getKey != SOURCE_READER_STATE) break()
-        val stateListForName: PartitionableListState[Any] = registeredOperStates.getOrElse(SOURCE_READER_STATE, null)
-        if (stateListForName == null) break()
+      //      breakable(for (nameToOffsets <- partOffsets.entrySet().asScala) {
+      // only pass SOURCE_READER_STATE
+      //      if (nameToOffsets.getKey != SOURCE_READER_STATE) break()
 
-        // clone new PartitionableListState without internalList
-        //        val stateListForNameNew = stateListForName.deepCopy()
-        //        stateListForNameNew.clear()
+      // get PartitionableListState
+      val partListState = registeredOperStates.getOrElse(SOURCE_READER_STATE, null)
+      if (partListState == null) break()
+      partListState.clear()
+      val backendMetaInfo = partListState.getStateMetaInfo
+      val mode = backendMetaInfo.getAssignmentMode
+      // typeSerializer := BytePrimitiveArraySerializer
+      val typeSerializer = backendMetaInfo.getPartitionStateSerializer
 
-        // FOLLOW OperatorStateRestoreOperation#deserializeOperatorStateValues
-        val metaInfo: OperatorStateHandle.StateMetaInfo = nameToOffsets.getValue
-        if (null == metaInfo) break()
-        val offsets = metaInfo.getOffsets
-        if (null == offsets) break()
-//        val offsetsNew = new Array[Long](offsets.length)
-        // typeSerializer := BytePrimitiveArraySerializer
-        val typeSerializer = stateListForName.getStateMetaInfo.getPartitionStateSerializer
-        val div = new DataInputViewStreamWrapper(in)
-        for (idx <- offsets.indices) {
-          in.seek(offsets(idx))
-          // BytePrimitiveArraySerializer -> MySqlSplitSerializer
-          val data: Array[Byte] = typeSerializer.deserialize(div).asInstanceOf[Array[Byte]]
-          val mysqlSplit = SimpleVersionedSerialization.readVersionAndDeSerialize(splitSerializer, data)
-          mysqlSplit match {
-            case x: MySqlBinlogSplit =>
+      // FOLLOW OperatorStateRestoreOperation#deserializeOperatorStateValues
+      //        val metaInfo: OperatorStateHandle.StateMetaInfo = nameToOffsets.getValue
+      //        if (null == metaInfo) break()
+      //        val offsets = metaInfo.getOffsets
+      //        if (null == offsets) break()
+      //        for (idx <- offsets.indices) {
 
-              // todo create a new binlog split
-              val startingOffset = BinlogOffset.builder()
-                .setServerId(x.getStartingOffset.getServerId)
-                .setGtidSet(gtidsNew)
-                .build()
-              val finishedSplitsInfo = List[FinishedSnapshotSplitInfo]()
-              val mysqlSplitNew = new MySqlBinlogSplit(
-                "binlog-split",
-                startingOffset,
-                BinlogOffset.ofNonStopping,
-                finishedSplitsInfo.asJava,
-                x.getTableSchemas,
-                x.getTotalFinishedSplitSize,
-                false)
-              val dataNew = SimpleVersionedSerialization.writeVersionAndSerialize(splitSerializer, mysqlSplitNew)
-              //              stateListForNameNew.add(dataNew)
+      /** belong to OperatorStreamStateHandle.StreamStateHandle */
+      //          in.seek(offsets(idx))
+      // deserialize: BytePrimitiveArraySerializer -> MySqlSplitSerializer
+      val data = typeSerializer.deserialize(div).asInstanceOf[Array[Byte]]
+      val mysqlSplit = SimpleVersionedSerialization.readVersionAndDeSerialize(splitSerializer, data)
+      mysqlSplit match {
+        case x: MySqlBinlogSplit =>
 
-              // FSDataOutputStream / ByteArrayOutputStream
-              val out = new ByteArrayOutputStream()
-              out.write(dataNew.length)
-              val out0 = new ByteArrayOutputStream()
-              val dov = new DataOutputViewStreamWrapper(out0)
-              typeSerializer.serialize(dataNew, dov)
-              out.write(out0.toByteArray)
+          // todo create a new binlog split
+          val startingOffset = BinlogOffset.builder()
+            .setServerId(x.getStartingOffset.getServerId)
+            .setGtidSet(gtidsNew)
+            .build()
+          val finishedSplitsInfo = List[FinishedSnapshotSplitInfo]()
+          val mysqlSplitNew = new MySqlBinlogSplit(
+            "binlog-split",
+            startingOffset,
+            BinlogOffset.ofNonStopping,
+            finishedSplitsInfo.asJava,
+            x.getTableSchemas,
+            x.getTotalFinishedSplitSize,
+            false)
+          // serialize: MySqlSplitSerializer -> BytePrimitiveArraySerializer
+          val dataNew = SimpleVersionedSerialization.writeVersionAndSerialize(splitSerializer, mysqlSplitNew)
+          // FOLLOW OperatorStateRestoreOperation#deserializeOperatorStateValues
+          partListState.add(dataNew)
 
-            case _: MySqlSnapshotSplit =>
-            case _ =>
-              throw new Exception("unknow state type")
-          }
-        }
+        case _: MySqlSnapshotSplit =>
+        case _ =>
+          throw new Exception("unknow state type")
+      }
+      //        }
 
-        // only reserve SOURCE_READER_STATE StateMetaInfo
-        partOffsetsNew(SOURCE_READER_STATE) = metaInfo
-      })
+      // write PartitionableListState
+      val partitionOffsetsNew = partListState.write(localOut)
 
-      // create a new managedOperStateHandle
-      val managedOperStateHandleNew = new OperatorStreamStateHandle(partOffsetsNew.asJava, delegateStateHandle)
-      // add updated operSubtaskState to the new OperatorState
-      fieldManagedOperatorState.set(operSubtaskState, StateObjectCollection.singleton(managedOperStateHandleNew))
-      newOperState.putState(subtaskIndex, operSubtaskState)
+      // only reserve SOURCE_READER_STATE StateMetaInfo
+      val metaInfoNew = new OperatorStateHandle.StateMetaInfo(partitionOffsetsNew, mode)
+      partOffsetsNew(SOURCE_READER_STATE) = metaInfoNew
+      //      })
+
+      val stateHandleNew = localOut.closeAndGetHandle()
+      if (stateHandleNew != null) {
+        // create a new managedOperStateHandle
+        val managedOperStateHandleNew = new OperatorStreamStateHandle(partOffsetsNew.asJava, stateHandleNew)
+
+        // add updated operSubtaskState to the new OperatorState
+        fieldManagedOperatorState.set(operSubtaskState, StateObjectCollection.singleton(managedOperStateHandleNew))
+        newOperState.putState(subtaskIndex, operSubtaskState)
+      } else throw new IOException("Stream was already unregistered.")
     }
-
-    /** create a new coordinator state */
 
     // todo generate new pending splits state
     val tbls = "test_db.cdc_order"
@@ -330,20 +353,15 @@ object TransMetaState {
       baos.close()
     }
 
-    /** save checkpoint metadata */
-
-    val collect = Iterable(newOperState) //++ reservedOperatorStates
-    val ckpMeta = new CheckpointMetadata(ckpId + ADD_VERSION, collect.asJavaCollection, metadata.getMasterStates,
+    // save checkpoint metadata
+    val collect = Iterable(newOperState) // todo ++ reservedOperatorStates
+    val ckpMeta = new CheckpointMetadata(ckpIdNew, collect.asJavaCollection, metadata.getMasterStates,
       metadata.getCheckpointProperties)
-    val idx = oldPath.lastIndexOf("-") + 1
-    val newPath = oldPath.substring(0, idx) + (oldPath.substring(idx).toLong + ADD_VERSION).toString
-    val checkpointDir = new Path(newPath)
-    val fileSystem = checkpointDir.getFileSystem
     val metadataDir = EntropyInjector.removeEntropyMarkerIfPresent(fileSystem, checkpointDir)
     val metadataFilePath = new Path(metadataDir, AbstractFsCheckpointStorageAccess.METADATA_FILE_NAME)
-    //    val ckpOut = new FsCheckpointMetadataOutputStream(fileSystem, metadataFilePath, checkpointDir)
-    //    Checkpoints.storeCheckpointMetadata(ckpMeta, ckpOut)
-    //    ckpOut.closeAndFinalizeCheckpoint()
+    val ckpOut = new FsCheckpointMetadataOutputStream(fileSystem, metadataFilePath, checkpointDir)
+    Checkpoints.storeCheckpointMetadata(ckpMeta, ckpOut)
+    ckpOut.closeAndFinalizeCheckpoint()
   }
 
   def main(args: Array[String]): Unit = {
