@@ -6,7 +6,12 @@ import com.ververica.cdc.connectors.mysql.source.offset.BinlogOffset
 import com.ververica.cdc.connectors.mysql.source.split._
 import io.debezium.relational.TableId
 import io.debezium.relational.history.TableChanges
+import org.apache.flink.api.common.state.{ListState, ListStateDescriptor}
+import org.apache.flink.api.common.typeinfo.TypeInformation
+import org.apache.flink.api.java.typeutils.TypeExtractor
+import org.apache.flink.api.java.utils.ParameterTool
 import org.apache.flink.configuration.CheckpointingOptions
+import org.apache.flink.contrib.streaming.state.EmbeddedRocksDBStateBackend
 import org.apache.flink.core.fs.{EntropyInjector, Path}
 import org.apache.flink.core.io.SimpleVersionedSerialization
 import org.apache.flink.core.memory.{DataInputDeserializer, DataInputViewStreamWrapper, DataOutputViewStreamWrapper}
@@ -15,10 +20,11 @@ import org.apache.flink.runtime.checkpoint.{Checkpoints, OperatorState, StateObj
 import org.apache.flink.runtime.source.coordinator.SourceCoordinatorSerdeUtils
 import org.apache.flink.runtime.state.OperatorStateHandle.StateMetaInfo
 import org.apache.flink.runtime.state._
-import org.apache.flink.runtime.state.filesystem.{AbstractFsCheckpointStorageAccess, FsCheckpointMetadataOutputStream, FsCheckpointStorageLocation}
+import org.apache.flink.runtime.state.filesystem.{AbstractFsCheckpointStorageAccess, FsCheckpointMetadataOutputStream, FsCheckpointStorageLocation, RelativeFileStateHandle}
 import org.apache.flink.runtime.state.memory.ByteStreamStateHandle
 import org.apache.flink.runtime.state.metainfo.StateMetaInfoSnapshot
-import org.apache.flink.state.api.OperatorIdentifier
+import org.apache.flink.state.api.functions.StateBootstrapFunction
+import org.apache.flink.state.api.{OperatorIdentifier, OperatorTransformation, SavepointReader, SavepointWriter}
 import org.apache.flink.state.api.runtime.SavepointLoader
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.flink.util.MathUtils
@@ -82,25 +88,11 @@ object TransMetaState {
   }
 
   /** modify checkpoint operator state (_metadata/uuid) */
-  /*def modifyCheckpointOperatorState(env: StreamExecutionEnvironment, oldPath: String) = {
+  def modifyCheckpointOperatorState(env: StreamExecutionEnvironment, oldPath: String) = {
     /* read reader state from old path */
     val byteArrayType: TypeInformation[Array[Byte]] = TypeExtractor.getForClass(classOf[Array[Byte]])
     val reader = SavepointReader.read(env, oldPath, new EmbeddedRocksDBStateBackend(true))
     val input = reader.readListState(SRC_UID, SOURCE_READER_STATE, byteArrayType)
-    input.map(in => {
-      val state = SimpleVersionedSerialization.readVersionAndDeSerialize(new MySqlSplitSerializer, in)
-      LOG.info("SourceReaderState: {}", state.toString)
-      state match {
-        case x: MySqlBinlogSplit =>
-          val offsetObj = x.getStartingOffset
-          // printf("Filename=%s; Position=%d\n", offsetObj.getFilename, offsetObj.getPosition)
-          printf("[RECOVER_CDC] startup=gtid/%s\n", offsetObj.getGtidSet)
-        case _: MySqlSnapshotSplit =>
-          printf("please restart this job again\n")
-        case _ =>
-          throw new Exception("unknow state type")
-      }
-    })
 
     /* update reader state */
     val trans = OperatorTransformation.bootstrapWith(input).transform(new StateBootstrapFunction[Array[Byte]] {
@@ -130,10 +122,31 @@ object TransMetaState {
     /* write to new path */
     val idx = oldPath.lastIndexOf("-") + 1
     val newPath = oldPath.substring(0, idx) + (oldPath.substring(idx).toLong + ADD_VERSION).toString
-    //      val writer = SavepointWriter.fromExistingSavepoint(env, oldPath, new EmbeddedRocksDBStateBackend(true))
+    //    val writer = SavepointWriter.fromExistingSavepoint(env, oldPath, new EmbeddedRocksDBStateBackend(true))
     //    val writer = SavepointWriter.newSavepoint(env, new EmbeddedRocksDBStateBackend(true), 2)
     //    writer.withOperator(identifier, trans).write(newPath)
-  }*/
+  }
+
+  /** read source reader state from old path */
+  def readSourceReaderState(env: StreamExecutionEnvironment, oldPath: String): Unit = {
+    val byteArrayType: TypeInformation[Array[Byte]] = TypeExtractor.getForClass(classOf[Array[Byte]])
+    val reader = SavepointReader.read(env, oldPath, new EmbeddedRocksDBStateBackend(true))
+    val input = reader.readListState(SRC_UID, SOURCE_READER_STATE, byteArrayType)
+    input.map(in => {
+      val state = SimpleVersionedSerialization.readVersionAndDeSerialize(new MySqlSplitSerializer, in)
+      LOG.info("SourceReaderState: {}", state.toString)
+      state match {
+        case x: MySqlBinlogSplit =>
+          val offsetObj = x.getStartingOffset
+          // printf("Filename=%s; Position=%d\n", offsetObj.getFilename, offsetObj.getPosition)
+          "[RECOVER_CDC] --gtid %s".format(offsetObj.getGtidSet)
+        case _: MySqlSnapshotSplit =>
+          "please restart this job again"
+        case _ =>
+          "unknow state type"
+      }
+    }).print()
+  }
 
   /** read operator state of operID in path */
   private def readOperatorState(metadata: CheckpointMetadata, operID: String): OperatorState = {
@@ -197,10 +210,19 @@ object TransMetaState {
       val managedOperState = fieldManagedOperatorState.get(operSubtaskState)
         .asInstanceOf[StateObjectCollection[OperatorStateHandle]]
       // FOLLOW MetadataV2V3SerializerBase#deserializeOperatorStateHandle
+      // return OperatorStreamStateHandle
       val managedOperStateHandle = managedOperState.iterator().next()
 
       // get delegateStateHandle(StreamStateHandle, may be ByteStreamStateHandle/RelativeFileStateHandle)
       // then open it as input stream
+      managedOperStateHandle.getDelegateStateHandle match {
+        case x: ByteStreamStateHandle =>
+          println("StreamStateHandle:=ByteStreamStateHandle, " + x.getData.length)
+        case x: RelativeFileStateHandle =>
+          println("StreamStateHandle:=RelativeFileStateHandle, " + x.getFilePath.toString)
+        case x =>
+          println("StreamStateHandle:=" + x.getClass)
+      }
       val in = managedOperStateHandle.openInputStream
       val div = new DataInputViewStreamWrapper(in)
 
@@ -217,8 +239,10 @@ object TransMetaState {
         val restoredMetaInfo = new RegisteredOperatorStateBackendMetaInfo(restoredSnapshot)
         val listState = constructPartListState.newInstance(restoredMetaInfo).asInstanceOf[PartitionableListState[Any]]
         val stateName = listState.getStateMetaInfo.getName
-        registeredOperStates.put(stateName, listState)
-        if (stateName == SOURCE_READER_STATE) operMetaInfoSnapshotsNew += listState.getStateMetaInfo.snapshot()
+        if (stateName == SOURCE_READER_STATE) {
+          registeredOperStates.put(stateName, listState)
+          operMetaInfoSnapshotsNew += listState.getStateMetaInfo.snapshot()
+        }
       }
 
       // 3. create new output stream and OperatorBackendSerializationProxy
@@ -229,51 +253,56 @@ object TransMetaState {
 
       // 4. take and clear PartitionableListState
       val partListState = registeredOperStates.getOrElse(SOURCE_READER_STATE, null)
-      if (partListState == null) throw new Exception("SOURCE_READER_STATE is null")
+      if (partListState == null) return
       partListState.clear()
       val backendMetaInfo = partListState.getStateMetaInfo
 
       // 5. deserialize byte str to get MysqlSplit
+      val partOffsetsNew = mutable.Map[String, StateMetaInfo]()
       val mode = backendMetaInfo.getAssignmentMode
       // typeSerializer := BytePrimitiveArraySerializer
       val typeSerializer = backendMetaInfo.getPartitionStateSerializer
-      // deserialize: BytePrimitiveArraySerializer -> MySqlSplitSerializer
-      val data = typeSerializer.deserialize(div).asInstanceOf[Array[Byte]]
-      val mysqlSplit = SimpleVersionedSerialization.readVersionAndDeSerialize(splitSerializer, data)
-      mysqlSplit match {
-        case x: MySqlBinlogSplit =>
+      // get offset array in offsetsMap
+      val metaInfo = managedOperStateHandle.getStateNameToPartitionOffsets.getOrDefault(SOURCE_READER_STATE, null)
+      if (metaInfo != null && metaInfo.getOffsets.nonEmpty) {
+        println("offset="+ metaInfo.getOffsets.head)
 
-          // todo create a new binlog split
-          val startingOffset = BinlogOffset.builder()
-            .setServerId(x.getStartingOffset.getServerId)
-            .setGtidSet(gtidsNew)
-            .build()
-          val finishedSplitsInfo = List[FinishedSnapshotSplitInfo]()
-          val mysqlSplitNew = new MySqlBinlogSplit(
-            "binlog-split",
-            startingOffset,
-            BinlogOffset.ofNonStopping,
-            finishedSplitsInfo.asJava,
-            x.getTableSchemas,
-            x.getTotalFinishedSplitSize,
-            false)
-          // serialize: MySqlSplitSerializer -> BytePrimitiveArraySerializer
-          val dataNew = SimpleVersionedSerialization.writeVersionAndSerialize(splitSerializer, mysqlSplitNew)
-          // FOLLOW OperatorStateRestoreOperation#deserializeOperatorStateValues
-          partListState.add(dataNew)
+        // deserialize: BytePrimitiveArraySerializer -> MySqlSplitSerializer
+        val data = typeSerializer.deserialize(div).asInstanceOf[Array[Byte]]
+        SimpleVersionedSerialization.readVersionAndDeSerialize(splitSerializer, data) match {
+          case x: MySqlBinlogSplit =>
 
-        case _: MySqlSnapshotSplit =>
-        case _ =>
-          throw new Exception("unknow state type")
+            // todo create a new binlog split
+            val startingOffset = BinlogOffset.builder()
+              .setServerId(x.getStartingOffset.getServerId)
+              .setGtidSet(gtidsNew)
+              .build()
+            val finishedSplitsInfo = List[FinishedSnapshotSplitInfo]()
+            val mysqlSplitNew = new MySqlBinlogSplit(
+              "binlog-split",
+              startingOffset,
+              BinlogOffset.ofNonStopping,
+              finishedSplitsInfo.asJava,
+              x.getTableSchemas,
+              x.getTotalFinishedSplitSize,
+              false)
+            // serialize: MySqlSplitSerializer -> BytePrimitiveArraySerializer
+            val dataNew = SimpleVersionedSerialization.writeVersionAndSerialize(splitSerializer, mysqlSplitNew)
+            // FOLLOW OperatorStateRestoreOperation#deserializeOperatorStateValues
+            partListState.add(dataNew)
+
+          case _: MySqlSnapshotSplit =>
+          case _ =>
+            throw new Exception("unknow state type")
+        }
+
+        // 6. write PartitionableListState back to output stream (file)
+        val partitionOffsetsNew = partListState.write(localOut)
+
+        // 7. create new stateNameToPartitionOffsets in OperatorStreamStateHandle
+        val metaInfoNew = new OperatorStateHandle.StateMetaInfo(partitionOffsetsNew, mode)
+        partOffsetsNew(SOURCE_READER_STATE) = metaInfoNew
       }
-
-      // 6. write PartitionableListState back to output stream (file)
-      val partitionOffsetsNew = partListState.write(localOut)
-
-      // 7. create new stateNameToPartitionOffsets in OperatorStreamStateHandle
-      val partOffsetsNew = mutable.Map[String, StateMetaInfo]()
-      val metaInfoNew = new OperatorStateHandle.StateMetaInfo(partitionOffsetsNew, mode)
-      partOffsetsNew(SOURCE_READER_STATE) = metaInfoNew
 
       // 8. create new delegateStateHandle in OperatorStreamStateHandle
       val stateHandleNew = localOut.closeAndGetHandle()
@@ -352,11 +381,16 @@ object TransMetaState {
 
   def main(args: Array[String]): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment()
+    val argParams = ParameterTool.fromArgs(args)
+    println("argParams: " + argParams.toMap.toString)
 
-    /** path like hdfs://master-node:50070/user/root/ckp/d3bd6ff35e3dea9d0d75681cd9210941/chk-6 */
-    val oldPath = args(0)
-    val gtids = args(1)
-    transformSrcState(oldPath, gtids)
+    // --path hdfs://master-node:50070/tmp/checkpoints/3fb359ddb774a2ba5a8f53deb57136cf/chk-8989
+    val oldPath = argParams.get("path", "")
+    readSourceReaderState(env, oldPath)
+
+    // --gtid d7a47357-6d10-11ee-a3cd-0242ac110002:1-11
+    val gtids = argParams.get("gtid", "")
+    if (gtids.nonEmpty) transformSrcState(oldPath, gtids)
 
     env.fromElements(0).print()
     env.execute(getClass.getSimpleName.stripSuffix("$"))

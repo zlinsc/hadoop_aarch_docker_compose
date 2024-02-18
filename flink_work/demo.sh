@@ -98,17 +98,19 @@ function cdc2hudi() {
       --db.tables test_db.cdc_order --buckets 2
 }
 
-######## update state
+######## modify state
 function transState() {
-  # hdfs://master-node:50070/tmp/checkpoints/13008ee00bc5d8a8643e6dd221facbc0/chk-237
-  flink run-application -t yarn-application \
+  # --path hdfs://master-node:50070/tmp/checkpoints/13008ee00bc5d8a8643e6dd221facbc0/chk-237
+  command="flink run-application -t yarn-application \
     -Dclassloader.check-leaked-classloader=false -Dstate.checkpoints.num-retained=5 \
     -Dclient.timeout=600s -Dtaskmanager.slot.timeout=300s -Dakka.ask.timeout=300s \
     -Dyarn.application.name=cdcTransState -Dyarn.application.queue=default \
     -Dtaskmanager.numberOfTaskSlots=1 -Dparallelism.default=1 \
     -Dtaskmanager.memory.process.size=1gb -Djobmanager.memory.process.size=1gb \
     -Dtaskmanager.memory.managed.fraction=0.1 -Dtaskmanager.memory.network.fraction=0.1 \
-    -c lakepump.cdc.TransMetaState flink_work-1.5.jar $1
+    -c lakepump.cdc.TransMetaState flink_work-1.5.jar $@"
+  echo -e "\033[30;42m[startup]\033[0m \033[32;4m${command}\033[0m"
+  $command
 }
 
 ######## hudi query
