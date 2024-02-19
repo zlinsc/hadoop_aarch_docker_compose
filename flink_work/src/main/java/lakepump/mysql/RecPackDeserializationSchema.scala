@@ -23,6 +23,8 @@ class RecPackDeserializationSchema(sharding: Int, tableRowMap: Map[String, (Seq[
     if (arr.length == 1) {
       LOG.warn("without handler: " + sourceRecord.toString)
     } else if (arr.length == 3) {
+//      println(sourceRecord.toString) // debug
+
       val db = arr(1)
       val table = arr(2)
       val regex = "_\\d+$".r

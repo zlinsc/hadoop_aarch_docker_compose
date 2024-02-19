@@ -43,7 +43,7 @@ object TransMetaState {
   val ADD_VERSION = 2000
 
   /** read PendingSplitsState from CoordinatorState of operID */
-  def readPendingSplitsState(metadata: CheckpointMetadata, operID: String): PendingSplitsState = {
+  private def readPendingSplitsState(metadata: CheckpointMetadata, operID: String): PendingSplitsState = {
     val operState = readOperatorState(metadata, operID)
     val stateHandle: ByteStreamStateHandle = operState.getCoordinatorState
 
@@ -67,7 +67,6 @@ object TransMetaState {
       val pendingSplitsState = serializer.deserialize(enumSerializerVersion, bytes) match {
         case x: HybridPendingSplitsState =>
           LOG.info("HybridPendingSplitsState: {}", x)
-          //          LOG.info("[RRR] HybridPendingSplitsState:SplitFinishedOffsets: {}", x.getSnapshotPendingSplits.getSplitFinishedOffsets)
           x
         case x: SnapshotPendingSplitsState =>
           LOG.info("SnapshotPendingSplitsState: {}", x)
@@ -139,12 +138,11 @@ object TransMetaState {
       state match {
         case x: MySqlBinlogSplit =>
           val offsetObj = x.getStartingOffset
-          // printf("Filename=%s; Position=%d\n", offsetObj.getFilename, offsetObj.getPosition)
-          println("[RECOVER_CDC] --gtid %s".format(offsetObj.getGtidSet))
+          LOG.info("--gtid {}", offsetObj.getGtidSet)
         case _: MySqlSnapshotSplit =>
-          println("please restart this job again")
+          LOG.info("please restart this job again")
         case _ =>
-          println("unknow state type")
+          LOG.info("unknow state type")
       }
     })
   }
@@ -157,7 +155,7 @@ object TransMetaState {
   }
 
   /** transfer coordinator state and save to metadata */
-  def transformSrcState(oldPath: String, gtidsNew: String, resets: String): Unit = {
+  def transformSrcState(oldPath: String, gtid: String, resetTbls: String): Unit = {
 
     // new metadata path
     val idx = oldPath.lastIndexOf("-") + 1
@@ -187,10 +185,11 @@ object TransMetaState {
 
     // 1. read operator state from old path and clone a new one
     val operID = SRC_UID.getOperatorId
+    val operIDHex = operID.toHexString
     val metadata = SavepointLoader.loadSavepointMetadata(oldPath) // kick off
     val ckpId = metadata.getCheckpointId
     val ckpIdNew = ckpId + ADD_VERSION
-    val operState = readOperatorState(metadata, operID.toHexString)
+    val operState = readOperatorState(metadata, operIDHex)
     val newOperState = new OperatorState(operID, operState.getParallelism, operState.getMaxParallelism)
 
     // 2. iterate each subtask state
@@ -219,11 +218,11 @@ object TransMetaState {
       // then open it as input stream
       managedOperStateHandle.getDelegateStateHandle match {
         case x: ByteStreamStateHandle =>
-          println("StreamStateHandle:=ByteStreamStateHandle, " + x.getData.length)
+          LOG.info("StreamStateHandle:=ByteStreamStateHandle, {}", x.getData.length)
         case x: RelativeFileStateHandle =>
-          println("StreamStateHandle:=RelativeFileStateHandle, " + x.getFilePath.toString)
+          LOG.info("StreamStateHandle:=RelativeFileStateHandle, {}", x.getFilePath.toString)
         case x =>
-          println("StreamStateHandle:=" + x.getClass)
+          LOG.info("StreamStateHandle:={}", x.getClass.toString)
       }
       val in = managedOperStateHandle.openInputStream
       val div = new DataInputViewStreamWrapper(in)
@@ -267,7 +266,7 @@ object TransMetaState {
       // get offset array in offsetsMap
       val metaInfo = managedOperStateHandle.getStateNameToPartitionOffsets.getOrDefault(SOURCE_READER_STATE, null)
       if (metaInfo != null && metaInfo.getOffsets.nonEmpty) {
-        println("offset="+ metaInfo.getOffsets.head)
+        LOG.info("offset={}", metaInfo.getOffsets.head)
 
         // deserialize: BytePrimitiveArraySerializer -> MySqlSplitSerializer
         val data = typeSerializer.deserialize(div).asInstanceOf[Array[Byte]]
@@ -277,15 +276,15 @@ object TransMetaState {
             // todo create a new binlog split
             val startingOffset = BinlogOffset.builder()
               .setServerId(x.getStartingOffset.getServerId)
-              .setGtidSet(gtidsNew)
+              .setGtidSet(gtid)
               .setBinlogFilePosition("", Long.MinValue)
               .build()
-//            val finishedSplitsInfo = List[FinishedSnapshotSplitInfo]()
+            //            val finishedSplitsInfo = List[FinishedSnapshotSplitInfo]()
             val mysqlSplitNew = new MySqlBinlogSplit(
               "binlog-split",
               startingOffset,
               BinlogOffset.ofNonStopping,
-//              finishedSplitsInfo.asJava,
+              //              finishedSplitsInfo.asJava,
               x.getFinishedSnapshotSplitInfos,
               x.getTableSchemas,
               x.getTotalFinishedSplitSize,
@@ -322,12 +321,18 @@ object TransMetaState {
     }
 
     // todo 10. generate new pending splits state
-    val tbls = "test_db.cdc_order"
+    val resetTbleSet = resetTbls.split(",").toSet
+    val pendingSplitsStateOld = readPendingSplitsState(metadata, operIDHex).asInstanceOf[HybridPendingSplitsState]
+    val alreadyProcessedTablesSetInState =
+      pendingSplitsStateOld.getSnapshotPendingSplits.getAlreadyProcessedTables.asScala.toSet
+    LOG.info("alreadyProcessedTablesSetInState={}", alreadyProcessedTablesSetInState.map(_.toString()).mkString(","))
     val alreadyProcessedTables = ArrayBuffer[TableId]()
-    for (t <- tbls.split(",")) {
-      val arr = t.split("\\.")
-      alreadyProcessedTables += new TableId(arr(0), null, arr(1))
+    for (t <- alreadyProcessedTablesSetInState) {
+      val x = "%s.%s".format(t.catalog(), t.table())
+      // exclude reset tables
+      if (!resetTbleSet.contains(x)) alreadyProcessedTables += t
     }
+    LOG.info("alreadyProcessedTables={}", alreadyProcessedTables.map(_.toString()).mkString(","))
     val remainingTables = Seq[TableId]().asJava
     val remainingSplits = Seq[MySqlSchemalessSnapshotSplit]().asJava
     val assignedSplits = Map[String, MySqlSchemalessSnapshotSplit]().asJava
@@ -373,7 +378,7 @@ object TransMetaState {
     }
 
     // 12. save checkpoint metadata
-    val collect = Iterable(newOperState) // todo ++ reservedOperatorStates
+    val collect = Iterable(newOperState) // ++ reservedOperatorStates
     val ckpMeta = new CheckpointMetadata(ckpIdNew, collect.asJavaCollection, metadata.getMasterStates,
       metadata.getCheckpointProperties)
     val metadataDir = EntropyInjector.removeEntropyMarkerIfPresent(fileSystem, checkpointDir)
@@ -386,19 +391,16 @@ object TransMetaState {
   def main(args: Array[String]): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment()
     val argParams = ParameterTool.fromArgs(args)
-    println("argParams: " + argParams.toMap.toString)
+    LOG.info("argParams: {}", argParams.toMap.toString)
 
-    // --path hdfs://master-node:50070/tmp/checkpoints/3fb359ddb774a2ba5a8f53deb57136cf/chk-8989
+    // todo --path hdfs://master-node:50070/tmp/checkpoints/aebe97883e2c19b8abaf5c47b30cf35c/chk-2014
+    //      --gtid d7a47357-6d10-11ee-a3cd-0242ac110002:1-11
+    //      --reset_tbl test_db.cdc_order
     val oldPath = argParams.get("path", "")
     readSourceReaderState(env, oldPath)
-
-    // todo --gtid d7a47357-6d10-11ee-a3cd-0242ac110002:1-11
-    val gtids = argParams.get("gtid", "")
-    if (gtids.nonEmpty) transformSrcState(oldPath, gtids, "")
-
-    // todo --reset test_db.cdc_order
-    val resets = argParams.get("reset", "")
-    if (resets.nonEmpty) transformSrcState(oldPath, "", resets)
+    val gtid = argParams.get("gtid", "")
+    val resetTbls = argParams.get("reset_tbl", "")
+    if (gtid.nonEmpty || resetTbls.nonEmpty) transformSrcState(oldPath, gtid, resetTbls)
 
     env.fromElements(0).print()
     env.execute(getClass.getSimpleName.stripSuffix("$"))
