@@ -131,6 +131,7 @@ object TransMetaState {
   def readSourceReaderState(env: StreamExecutionEnvironment, oldPath: String): Unit = {
     val byteArrayType: TypeInformation[Array[Byte]] = TypeExtractor.getForClass(classOf[Array[Byte]])
     val reader = SavepointReader.read(env, oldPath, new EmbeddedRocksDBStateBackend(true))
+    LOG.info("SRC_UID: {}", SRC_UID.toString)
     val input = reader.readListState(SRC_UID, SOURCE_READER_STATE, byteArrayType)
     input.map(in => {
       val state = SimpleVersionedSerialization.readVersionAndDeSerialize(new MySqlSplitSerializer, in)
@@ -139,13 +140,13 @@ object TransMetaState {
         case x: MySqlBinlogSplit =>
           val offsetObj = x.getStartingOffset
           // printf("Filename=%s; Position=%d\n", offsetObj.getFilename, offsetObj.getPosition)
-          "[RECOVER_CDC] --gtid %s".format(offsetObj.getGtidSet)
+          println("[RECOVER_CDC] --gtid %s".format(offsetObj.getGtidSet))
         case _: MySqlSnapshotSplit =>
-          "please restart this job again"
+          println("please restart this job again")
         case _ =>
-          "unknow state type"
+          println("unknow state type")
       }
-    }).print()
+    })
   }
 
   /** read operator state of operID in path */
@@ -156,7 +157,7 @@ object TransMetaState {
   }
 
   /** transfer coordinator state and save to metadata */
-  def transformSrcState(oldPath: String, gtidsNew: String): Unit = {
+  def transformSrcState(oldPath: String, gtidsNew: String, resets: String): Unit = {
 
     // new metadata path
     val idx = oldPath.lastIndexOf("-") + 1
@@ -165,6 +166,7 @@ object TransMetaState {
     val rootPath = oldPath.substring(0, oldPath.lastIndexOf("/") + 1)
     val checkpointDir = new Path(rootPath + chkSubPath)
     val fileSystem = checkpointDir.getFileSystem
+    if (fileSystem.exists(checkpointDir)) fileSystem.delete(checkpointDir, true)
 
     // reflect PartitionableListState constructor
     val constructPartListState = Class.forName("org.apache.flink.runtime.state.PartitionableListState")
@@ -276,13 +278,15 @@ object TransMetaState {
             val startingOffset = BinlogOffset.builder()
               .setServerId(x.getStartingOffset.getServerId)
               .setGtidSet(gtidsNew)
+              .setBinlogFilePosition("", Long.MinValue)
               .build()
-            val finishedSplitsInfo = List[FinishedSnapshotSplitInfo]()
+//            val finishedSplitsInfo = List[FinishedSnapshotSplitInfo]()
             val mysqlSplitNew = new MySqlBinlogSplit(
               "binlog-split",
               startingOffset,
               BinlogOffset.ofNonStopping,
-              finishedSplitsInfo.asJava,
+//              finishedSplitsInfo.asJava,
+              x.getFinishedSnapshotSplitInfos,
               x.getTableSchemas,
               x.getTotalFinishedSplitSize,
               false)
@@ -388,9 +392,13 @@ object TransMetaState {
     val oldPath = argParams.get("path", "")
     readSourceReaderState(env, oldPath)
 
-    // --gtid d7a47357-6d10-11ee-a3cd-0242ac110002:1-11
+    // todo --gtid d7a47357-6d10-11ee-a3cd-0242ac110002:1-11
     val gtids = argParams.get("gtid", "")
-    if (gtids.nonEmpty) transformSrcState(oldPath, gtids)
+    if (gtids.nonEmpty) transformSrcState(oldPath, gtids, "")
+
+    // todo --reset test_db.cdc_order
+    val resets = argParams.get("reset", "")
+    if (resets.nonEmpty) transformSrcState(oldPath, "", resets)
 
     env.fromElements(0).print()
     env.execute(getClass.getSimpleName.stripSuffix("$"))
