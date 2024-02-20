@@ -14,7 +14,7 @@ import org.apache.kafka.connect.source.SourceRecord
 
 import java.time.ZoneId
 
-class RecPackDeserializationSchema(sharding: Int, tableRowMap: Map[String, (Seq[String], RowType)])
+class RecPackDeserializationSchema(sharding: Int, tableRowMap: Map[String, (Seq[String], RowType)], env: String)
   extends DebeziumDeserializationSchema[RecPack] {
 
   override def deserialize(sourceRecord: SourceRecord, out: Collector[RecPack]): Unit = {
@@ -23,7 +23,7 @@ class RecPackDeserializationSchema(sharding: Int, tableRowMap: Map[String, (Seq[
     if (arr.length == 1) {
       LOG.warn("without handler: " + sourceRecord.toString)
     } else if (arr.length == 3) {
-//      println(sourceRecord.toString) // debug
+      if (env.equals("dev")) println(sourceRecord.toString)
 
       val db = arr(1)
       val table = arr(2)

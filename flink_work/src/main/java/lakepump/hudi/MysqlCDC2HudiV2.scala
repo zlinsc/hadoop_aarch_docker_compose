@@ -43,8 +43,9 @@ import scala.util.control.Breaks.{break, breakable}
 object MysqlCDC2HudiV2 {
   val LOG: Logger = LoggerFactory.getLogger(getClass)
 
-  val CONF_FILE = "application.conf"
-  //  val CONF_FILE = "settings_v2_online.conf"
+  // todo specify environment
+  val ENV = "dev"
+  val CONF_FILE = if (ENV.equals("dev")) "application.conf" else "settings_v2_online.conf"
 
   val SYS_APP_NAME = "yarn.application.name"
 
@@ -179,7 +180,7 @@ object MysqlCDC2HudiV2 {
     for (i <- tblList.indices) bucketMap += (tblList(i) -> buckets(i).toInt)
 
     /** build data source */
-    val deserializer = new RecPackDeserializationSchema(sharding, tableRowMap.toMap)
+    val deserializer = new RecPackDeserializationSchema(sharding, tableRowMap.toMap, ENV)
     val mysqlSource = MySqlSourceDef.newInstance(sourceConfigFactory, deserializer)
     val src = env.fromSource(mysqlSource, WatermarkStrategy.noWatermarks[RecPack](), "Mysql CDC Source")
       .setParallelism(binlogParallel).uid("src")

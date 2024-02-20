@@ -32,7 +32,7 @@ import org.slf4j.{Logger, LoggerFactory}
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, DataOutputStream, IOException}
 import scala.collection.JavaConverters._
-import scala.collection.mutable
+import scala.collection.{breakOut, mutable}
 import scala.collection.mutable.ArrayBuffer
 
 object TransMetaState {
@@ -86,6 +86,22 @@ object TransMetaState {
     }
   }
 
+  /** print pendingSplitsState */
+  def printPendingSplitsState(oldPath: String): Unit = {
+    val operID = SRC_UID.getOperatorId
+    val operIDHex = operID.toHexString
+    val metadata = SavepointLoader.loadSavepointMetadata(oldPath)
+    val pendingSplitsState = readPendingSplitsState(metadata, operIDHex)
+    pendingSplitsState match {
+      case x: HybridPendingSplitsState =>
+        LOG.info("HybridPendingSplitsState: {}", x)
+      case x: SnapshotPendingSplitsState =>
+        LOG.info("SnapshotPendingSplitsState: {}", x)
+      case x: BinlogPendingSplitsState =>
+        LOG.info("BinlogPendingSplitsState: {}", x)
+    }
+  }
+
   /** modify checkpoint operator state (_metadata/uuid) */
   def modifyCheckpointOperatorState(env: StreamExecutionEnvironment, oldPath: String) = {
     /* read reader state from old path */
@@ -127,24 +143,57 @@ object TransMetaState {
   }
 
   /** read source reader state from old path */
-  def readSourceReaderState(env: StreamExecutionEnvironment, oldPath: String): Unit = {
+  def readSourceReaderState(env: StreamExecutionEnvironment, oldPath: String): String = {
     val byteArrayType: TypeInformation[Array[Byte]] = TypeExtractor.getForClass(classOf[Array[Byte]])
     val reader = SavepointReader.read(env, oldPath, new EmbeddedRocksDBStateBackend(true))
     LOG.info("SRC_UID: {}", SRC_UID.toString)
     val input = reader.readListState(SRC_UID, SOURCE_READER_STATE, byteArrayType)
-    input.map(in => {
+    val seq = input.map(in => {
       val state = SimpleVersionedSerialization.readVersionAndDeSerialize(new MySqlSplitSerializer, in)
       LOG.info("SourceReaderState: {}", state.toString)
+      var gtidStr = ""
       state match {
         case x: MySqlBinlogSplit =>
           val offsetObj = x.getStartingOffset
-          LOG.info("--gtid {}", offsetObj.getGtidSet)
+          gtidStr = offsetObj.getGtidSet
+          LOG.info("--gtid {}", gtidStr)
         case _: MySqlSnapshotSplit =>
-          LOG.info("please restart this job again")
+          LOG.warn("please restart this job again")
         case _ =>
-          LOG.info("unknow state type")
+          LOG.error("unknow state type")
+      }
+      gtidStr
+    }).executeAndCollect().asScala.toSeq
+
+    val gtidMap = mutable.Map[String, String]()
+    seq.foreach(x => {
+      if (x.nonEmpty) {
+        val arr = x.split(",")
+        // compare 6dc8b5af-1616-11ec-8f60-a4ae12fe8402:1-20083670,6de8242f-1616-11ec-94a2-a4ae12fe9796:1-700110909
+        if (gtidMap.isEmpty) {
+          arr.foreach(y => {
+            val e = y.split(":")
+            gtidMap += (e(0) -> e(1))
+          })
+        } else {
+          arr.foreach(y => {
+            val e = y.split(":")
+            val k = e(0)
+            val v = e(1)
+            if (gtidMap.contains(k)) {
+              val n = v.split("-").last.toLong
+              val m = gtidMap(k).split("-").last.toLong
+              if (n < m) gtidMap(k) = v
+            } else {
+              gtidMap += (k -> v)
+            }
+          })
+        }
       }
     })
+    if (gtidMap.isEmpty) throw new Exception("cannot fetch gtid")
+
+    gtidMap.map { case (x, y) => x + ":" + y }.mkString(",")
   }
 
   /** read operator state of operID in path */
@@ -155,7 +204,12 @@ object TransMetaState {
   }
 
   /** transfer coordinator state and save to metadata */
-  def transformSrcState(oldPath: String, gtid: String, resetTbls: String): Unit = {
+  def transformSrcState(env: StreamExecutionEnvironment, oldPath: String, gtidNew: String, resetTbls: String): Unit = {
+
+    // refresh gtid
+    var gtidSpec = gtidNew
+    if (gtidNew.isEmpty) gtidSpec = readSourceReaderState(env, oldPath)
+    if (gtidSpec.isEmpty) throw new Exception("gtid is empty")
 
     // new metadata path
     val idx = oldPath.lastIndexOf("-") + 1
@@ -198,7 +252,7 @@ object TransMetaState {
       // get key & value
       val subtaskIndex = es.getKey
       val operSubtaskState = es.getValue
-      //      LOG.info("vvvv={}:{}", subtaskIndex, operSubtaskState.toString: Any)
+      //      LOG.info("{}:{}", subtaskIndex, operSubtaskState.toString: Any)
 
       // create output stream
       val localOut = factory.createCheckpointStateOutputStream(CheckpointedStateScope.EXCLUSIVE)
@@ -276,7 +330,7 @@ object TransMetaState {
             // todo create a new binlog split
             val startingOffset = BinlogOffset.builder()
               .setServerId(x.getStartingOffset.getServerId)
-              .setGtidSet(gtid)
+              .setGtidSet(gtidSpec)
               .setBinlogFilePosition("", Long.MinValue)
               .build()
             //            val finishedSplitsInfo = List[FinishedSnapshotSplitInfo]()
@@ -393,14 +447,15 @@ object TransMetaState {
     val argParams = ParameterTool.fromArgs(args)
     LOG.info("argParams: {}", argParams.toMap.toString)
 
-    // todo --path hdfs://master-node:50070/tmp/checkpoints/aebe97883e2c19b8abaf5c47b30cf35c/chk-2014
+    // todo --path hdfs://master-node:50070/tmp/checkpoints/d3b3ac91fc002fbd8d3fc4371dfdbb9c/chk-2013
     //      --gtid d7a47357-6d10-11ee-a3cd-0242ac110002:1-11
     //      --reset_tbl test_db.cdc_order
     val oldPath = argParams.get("path", "")
     readSourceReaderState(env, oldPath)
+    printPendingSplitsState(oldPath)
     val gtid = argParams.get("gtid", "")
     val resetTbls = argParams.get("reset_tbl", "")
-    if (gtid.nonEmpty || resetTbls.nonEmpty) transformSrcState(oldPath, gtid, resetTbls)
+    if (gtid.nonEmpty || resetTbls.nonEmpty) transformSrcState(env, oldPath, gtid, resetTbls)
 
     env.fromElements(0).print()
     env.execute(getClass.getSimpleName.stripSuffix("$"))
