@@ -24,15 +24,15 @@ import org.apache.flink.runtime.state.filesystem.{AbstractFsCheckpointStorageAcc
 import org.apache.flink.runtime.state.memory.ByteStreamStateHandle
 import org.apache.flink.runtime.state.metainfo.StateMetaInfoSnapshot
 import org.apache.flink.state.api.functions.StateBootstrapFunction
-import org.apache.flink.state.api.{OperatorIdentifier, OperatorTransformation, SavepointReader, SavepointWriter}
 import org.apache.flink.state.api.runtime.SavepointLoader
+import org.apache.flink.state.api.{OperatorIdentifier, OperatorTransformation, SavepointReader}
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.flink.util.MathUtils
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, DataOutputStream, IOException}
 import scala.collection.JavaConverters._
-import scala.collection.{breakOut, mutable}
+import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 object TransMetaState {
@@ -47,7 +47,7 @@ object TransMetaState {
     val operState = readOperatorState(metadata, operID)
     val stateHandle: ByteStreamStateHandle = operState.getCoordinatorState
 
-    // coordinatorState解析
+    // coordinatorState resolved
     val bais = new ByteArrayInputStream(stateHandle.getData)
     val in = new DataInputViewStreamWrapper(bais)
     try {
@@ -442,6 +442,14 @@ object TransMetaState {
     ckpOut.closeAndFinalizeCheckpoint()
   }
 
+  /**
+   * two parameter:
+   *  - gtid: specify gtid offset to recover cdc job from any timestamp. (This setting works through the
+   *      MySqlBinlogSplit.)
+   *  - reset_tbl: specify table list (use ',' to seperate), which need to clear their state of job. (This
+   *      setting works through the HybridPendingSplitsState, coordinating with cdc table configs, whether
+   *      we want to reset consuming offset or remove some cdc tables.)
+   */
   def main(args: Array[String]): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment()
     val argParams = ParameterTool.fromArgs(args)
